@@ -656,3 +656,19 @@ func prepareBenchmark(size, chunk, align int) ([]byte, []uint, []uint64, int) {
 
 	return buf, bits, values, last
 }
+
+func benchmarkReads(b *testing.B, chunk, align int) {
+	size := 1 << 12
+	buf, bits, _, last := prepareBenchmark(size, chunk, align)
+	b.SetBytes(int64(len(buf)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		r := NewReader(bytes.NewReader(buf))
+		for j := 0; j < last; j++ {
+			if _, err := r.Read(bits[j]); err != nil {
+				b.Error(err)
+				continue
+			}
+		}
+	}
+}
