@@ -66,3 +66,13 @@ type Block struct {
 	// Underlying io.Reader; limited by the length of the block body.
 	lr io.Reader
 }
+
+// unexpected returns io.ErrUnexpectedEOF if err is io.EOF,
+// and returns error otherwise.
+func unexpected(err error) error {
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+
+	return err
+}
