@@ -34,3 +34,11 @@ func (t Type) String() string {
 		return "<unknown block type>"
 	}
 }
+
+// Header contains information about the
+// type and length of a metadata block.
+type Header struct {
+	Type   Type  // metadata block body type
+	Length int64 // length of body data in bytes
+	IsLast bool  // specifies if the block is the last metadata block
+}
