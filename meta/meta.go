@@ -10,7 +10,11 @@
 // (StreamInfo, Padding, Application, SeekTable, VorbisComment, CueSheet, Picture).
 package meta
 
-import "io"
+import (
+	"io"
+
+	"github.com/pchchv/flac/internal/bits"
+)
 
 // Metadata block body types.
 const (
@@ -65,6 +69,55 @@ type Block struct {
 	Body interface{}
 	// Underlying io.Reader; limited by the length of the block body.
 	lr io.Reader
+}
+
+// Skip ignores the contents of the metadata block body.
+func (block *Block) Skip() (err error) {
+	if sr, ok := block.lr.(io.Seeker); ok {
+		_, err = sr.Seek(0, io.SeekEnd)
+		return
+	}
+
+	_, err = io.Copy(io.Discard, block.lr)
+	return
+}
+
+// parseHeader reads and parses the header of a metadata block.
+func (block *Block) parseHeader(r io.Reader) error {
+	// 1 bit: IsLast.
+	br := bits.NewReader(r)
+	x, err := br.Read(1)
+	if err != nil {
+		// This is the only place a metadata block may return io.EOF,
+		// which signals a graceful end of a FLAC stream
+		// (from a metadata point of view).
+		//
+		// Note that valid FLAC streams always contain at least one audio frame
+		// after the last metadata block.
+		// Therefore an io.EOF error at this location is always invalid.
+		// This logic is to be handled by the flac package however.
+		return err
+	}
+
+	if x != 0 {
+		block.IsLast = true
+	}
+
+	// 7 bits: Type.
+	x, err = br.Read(7)
+	if err != nil {
+		return unexpected(err)
+	}
+	block.Type = Type(x)
+
+	// 24 bits: Length.
+	x, err = br.Read(24)
+	if err != nil {
+		return unexpected(err)
+	}
+	block.Length = int64(x)
+
+	return nil
 }
 
 // unexpected returns io.ErrUnexpectedEOF if err is io.EOF,
