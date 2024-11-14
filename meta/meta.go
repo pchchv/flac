@@ -27,6 +27,20 @@ const (
 	TypePicture       Type = 6
 )
 
+// New creates a new Block for accessing the metadata of r.
+// It reads and parses a metadata block header.
+//
+// Call Block.Parse to parse the metadata block body,
+// and call Block.Skip to ignore it.
+func New(r io.Reader) (block *Block, err error) {
+	block = new(Block)
+	if err = block.parseHeader(r); err != nil {
+		return block, err
+	}
+	block.lr = io.LimitReader(r, block.Length)
+	return block, nil
+}
+
 // Type represents the type of a metadata block body.
 type Type uint8
 
