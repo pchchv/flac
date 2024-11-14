@@ -3,6 +3,7 @@ package bits
 import (
 	"bytes"
 	"io"
+	"math/rand"
 	"testing"
 )
 
@@ -617,4 +618,41 @@ func TestRead(t *testing.T) {
 			}
 		}
 	}
+}
+
+func getNumBits(read, max, chunk, align int) int {
+	bits := 1
+	if align != chunk {
+		bits += rand.Intn(chunk / align)
+	}
+
+	bits *= align
+	if read+bits > max {
+		bits = max - read
+	}
+
+	if bits > chunk {
+		panic("too many bits")
+	}
+
+	return bits
+}
+
+func prepareBenchmark(size, chunk, align int) ([]byte, []uint, []uint64, int) {
+	var idx, last int
+	buf := make([]byte, size)
+	bits := make([]uint, size)
+	values := make([]uint64, size)
+	for i := 0; i < size; i++ {
+		val := getNumBits(idx, size*8, chunk, align)
+		idx += val
+		if val != 0 {
+			last = i + 1
+		}
+
+		bits[i] = uint(val)
+		values[i] = uint64(rand.Uint32())<<32 + uint64(rand.Uint32())
+	}
+
+	return buf, bits, values, last
 }
