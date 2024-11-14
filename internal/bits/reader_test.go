@@ -620,6 +620,18 @@ func TestRead(t *testing.T) {
 	}
 }
 
+func BenchmarkReadAlign1(b *testing.B) {
+	benchmarkReads(b, 64, 1)
+}
+
+func BenchmarkReadAlign32(b *testing.B) {
+	benchmarkReads(b, 64, 32)
+}
+
+func BenchmarkReadAlign64(b *testing.B) {
+	benchmarkReads(b, 64, 64)
+}
+
 func getNumBits(read, max, chunk, align int) int {
 	bits := 1
 	if align != chunk {
