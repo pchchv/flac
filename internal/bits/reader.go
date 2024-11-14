@@ -11,3 +11,8 @@ type Reader struct {
 	x   uint8     // between 0 and 7 buffered bits since previous read operations
 	n   uint      // number of buffered bits in x
 }
+
+// NewReader returns a new Reader that reads bits from r.
+func NewReader(r io.Reader) *Reader {
+	return &Reader{r: r}
+}
