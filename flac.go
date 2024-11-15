@@ -198,3 +198,25 @@ func ParseFile(path string) (stream *Stream, err error) {
 
 	return
 }
+
+// Open creates a new Stream for accessing the audio samples of path.
+// It reads and parses the FLAC signature and the StreamInfo metadata block,
+// but skips all other metadata blocks.
+//
+// Call Stream.Next to parse the frame header of the next audio frame,
+// and call Stream.ParseNext to parse the entire next frame including audio samples.
+//
+// Note: The Close method of the stream must be called when finished using it.
+func Open(path string) (stream *Stream, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	stream, err = New(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return
+}
