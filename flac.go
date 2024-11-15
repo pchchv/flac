@@ -41,6 +41,36 @@ type Stream struct {
 	r io.Reader
 }
 
+// New creates a new Stream for accessing the audio samples of r.
+// It reads and parses the FLAC signature and the StreamInfo metadata block,
+// but skips all other metadata blocks.
+//
+// Call Stream.Next to parse the frame header of the next audio frame,
+// and call Stream.ParseNext to parse the entire next frame including audio samples.
+func New(r io.Reader) (stream *Stream, err error) {
+	// verify FLAC signature and parse the StreamInfo metadata block.
+	br := bufio.NewReader(r)
+	stream = &Stream{r: br}
+	block, err := stream.parseStreamInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// skip the remaining metadata blocks.
+	for !block.IsLast {
+		block, err = meta.New(br)
+		if err != nil && err != meta.ErrReservedType {
+			return stream, err
+		}
+
+		if err = block.Skip(); err != nil {
+			return stream, err
+		}
+	}
+
+	return stream, nil
+}
+
 // skipID3v2 skips ID3v2 data prepended to flac files.
 func (stream *Stream) skipID3v2() error {
 	r := bufio.NewReader(stream.r)
