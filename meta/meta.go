@@ -11,6 +11,7 @@
 package meta
 
 import (
+	"errors"
 	"io"
 
 	"github.com/pchchv/flac/internal/bits"
@@ -25,6 +26,11 @@ const (
 	TypeVorbisComment Type = 4
 	TypeCueSheet      Type = 5
 	TypePicture       Type = 6
+)
+
+var (
+	ErrReservedType = errors.New("meta.Block.Parse: reserved block type")
+	ErrInvalidType  = errors.New("meta.Block.Parse: invalid block type")
 )
 
 // New creates a new Block for accessing the metadata of r.
@@ -94,6 +100,31 @@ func (block *Block) Skip() (err error) {
 
 	_, err = io.Copy(io.Discard, block.lr)
 	return
+}
+
+// Parse reads and parses the metadata block body.
+func (block *Block) Parse() error {
+	switch block.Type {
+	case TypeStreamInfo:
+		return block.parseStreamInfo()
+	case TypePadding:
+		return block.verifyPadding()
+	case TypeApplication:
+		return block.parseApplication()
+	case TypeSeekTable:
+		return block.parseSeekTable()
+	case TypeVorbisComment:
+		return block.parseVorbisComment()
+	case TypeCueSheet:
+		return block.parseCueSheet()
+	case TypePicture:
+		return block.parsePicture()
+	}
+
+	if block.Type >= 7 && block.Type <= 126 {
+		return ErrReservedType
+	}
+	return ErrInvalidType
 }
 
 // parseHeader reads and parses the header of a metadata block.
