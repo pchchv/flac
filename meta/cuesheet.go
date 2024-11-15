@@ -166,6 +166,75 @@ func (block *Block) parseTrack(cs *CueSheet, i int, uniq map[uint8]struct{}) (er
 	return nil
 }
 
+// parseCueSheet reads and parses the body of a CueSheet metadata block.
+func (block *Block) parseCueSheet() error {
+	// Parse cue sheet.
+	// 128 bytes: MCN.
+	szMCN, err := readString(block.lr, 128)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	cs := &CueSheet{
+		MCN: stringFromSZ(szMCN),
+	}
+	block.Body = cs
+
+	// 64 bits: NLeadInSamples.
+	if err = binary.Read(block.lr, binary.BigEndian, &cs.NLeadInSamples); err != nil {
+		return unexpected(err)
+	}
+
+	// 1 bit: IsCompactDisc.
+	var x uint8
+	if err := binary.Read(block.lr, binary.BigEndian, &x); err != nil {
+		return unexpected(err)
+	}
+
+	// mask = 10000000
+	if x&0x80 != 0 {
+		cs.IsCompactDisc = true
+	}
+
+	// 7 bits and 258 bytes: reserved.
+	// mask = 01111111
+	if x&0x7F != 0 {
+		return ErrInvalidPadding
+	}
+
+	lr := io.LimitReader(block.lr, 258)
+	zr := zeros{r: lr}
+	if _, err := io.Copy(io.Discard, zr); err != nil {
+		return err
+	}
+
+	// Parse cue sheet tracks.
+	// 8 bits: (number of tracks)
+	if err := binary.Read(block.lr, binary.BigEndian, &x); err != nil {
+		return unexpected(err)
+	}
+
+	if x < 1 {
+		return errors.New("meta.Block.parseCueSheet: at least one track required")
+	}
+
+	if cs.IsCompactDisc && x > 100 {
+		return fmt.Errorf("meta.Block.parseCueSheet: number of CD-DA tracks (%d) exceeds 100", x)
+	}
+
+	cs.Tracks = make([]CueSheetTrack, x)
+	// Each track number within a cue sheet must be unique;
+	// use uniq to keep track.
+	uniq := make(map[uint8]struct{})
+	for i := range cs.Tracks {
+		if err := block.parseTrack(cs, i, uniq); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // stringFromSZ returns a copy of the given string terminated at
 // the first occurrence of a NULL character.
 func stringFromSZ(szStr string) string {
