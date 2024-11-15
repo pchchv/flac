@@ -102,3 +102,36 @@ func (stream *Stream) parseStreamInfo() (block *meta.Block, err error) {
 	stream.Info = si
 	return block, nil
 }
+
+// Parse creates a new Stream for accessing the metadata blocks and audio samples of r.
+// It reads and parses the FLAC signature and all metadata blocks.
+//
+// Call Stream.Next to parse the frame header of the next audio frame,
+// and call Stream.ParseNext to parse the entire next frame including audio samples.
+func Parse(r io.Reader) (stream *Stream, err error) {
+	// verify FLAC signature and parse the StreamInfo metadata block.
+	br := bufio.NewReader(r)
+	stream = &Stream{r: br}
+	block, err := stream.parseStreamInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	// parse the remaining metadata blocks.
+	for !block.IsLast {
+		block, err = meta.Parse(br)
+		if err != nil {
+			if err != meta.ErrReservedType {
+				return stream, err
+			}
+			// skip the body of unknown (reserved) metadata blocks,
+			// as stated by the specification.
+			if err = block.Skip(); err != nil {
+				return stream, err
+			}
+		}
+		stream.Blocks = append(stream.Blocks, block)
+	}
+
+	return stream, nil
+}
