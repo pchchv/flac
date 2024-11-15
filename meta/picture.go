@@ -1,5 +1,10 @@
 package meta
 
+import (
+	"encoding/binary"
+	"io"
+)
+
 // Picture contains the image data of an embedded picture.
 type Picture struct {
 	// Picture type according to the ID3v2 APIC frame:
@@ -40,4 +45,69 @@ type Picture struct {
 	NPalColors uint32
 	// Image data.
 	Data []byte
+}
+
+// parsePicture reads and parses the body of a Picture metadata block.
+func (block *Block) parsePicture() (err error) {
+	// 32 bits: Type.
+	pic := new(Picture)
+	block.Body = pic
+	if err = binary.Read(block.lr, binary.BigEndian, &pic.Type); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: (MIME type length).
+	var x uint32
+	if err = binary.Read(block.lr, binary.BigEndian, &x); err != nil {
+		return unexpected(err)
+	}
+
+	// (MIME type length) bytes: MIME.
+	if pic.MIME, err = readString(block.lr, int(x)); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: (description length).
+	if err = binary.Read(block.lr, binary.BigEndian, &x); err != nil {
+		return unexpected(err)
+	}
+
+	// (description length) bytes: Desc.
+	if pic.Desc, err = readString(block.lr, int(x)); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: Width.
+	if err = binary.Read(block.lr, binary.BigEndian, &pic.Width); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: Height.
+	if err = binary.Read(block.lr, binary.BigEndian, &pic.Height); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: Depth.
+	if err = binary.Read(block.lr, binary.BigEndian, &pic.Depth); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: NPalColors.
+	if err = binary.Read(block.lr, binary.BigEndian, &pic.NPalColors); err != nil {
+		return unexpected(err)
+	}
+
+	// 32 bits: (data length).
+	if err = binary.Read(block.lr, binary.BigEndian, &x); err != nil {
+		return unexpected(err)
+	}
+
+	if x == 0 {
+		return nil
+	}
+
+	// (data length) bytes: Data.
+	pic.Data = make([]byte, x)
+	_, err = io.ReadFull(block.lr, pic.Data)
+	return unexpected(err)
 }
