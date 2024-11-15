@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/pchchv/flac/meta"
 )
@@ -134,4 +135,27 @@ func Parse(r io.Reader) (stream *Stream, err error) {
 	}
 
 	return stream, nil
+}
+
+// ParseFile creates a new Stream for accessing the
+// metadata blocks and audio samples of path.
+// It reads and parses the FLAC signature and all metadata blocks.
+//
+// Call Stream.Next to parse the frame header of the next audio frame,
+// and call Stream.ParseNext to parse the
+// entire next frame including audio samples.
+//
+// Note: Close method of the stream must be called when finished using it.
+func ParseFile(path string) (stream *Stream, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	stream, err = Parse(f)
+	if err != nil {
+		return nil, err
+	}
+
+	return
 }
