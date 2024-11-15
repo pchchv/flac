@@ -1,6 +1,6 @@
 package meta
 
-// A CueSheetTrackIndex specifies a position within a track.
+// CueSheetTrackIndex specifies a position within a track.
 type CueSheetTrackIndex struct {
 	// Index point offset in samples, relative to the track offset.
 	Offset uint64
@@ -28,4 +28,20 @@ type CueSheetTrack struct {
 	// except for the lead-out track which has zero.
 	// Each index point specifies a position within the track.
 	Indicies []CueSheetTrackIndex
+}
+
+// CueSheet describes how tracks are laid out within a FLAC stream.
+type CueSheet struct {
+	// Media catalog number.
+	MCN string
+	// Number of lead-in samples.
+	// This field only has meaning for CD-DA cue sheets;
+	// for other uses it should be 0.
+	// Refer to the spec for additional information.
+	NLeadInSamples uint64
+	// Specifies if the cue sheet corresponds to a Compact Disc.
+	IsCompactDisc bool
+	// One or more tracks.
+	// The last track of a cue sheet is always the lead-out track.
+	Tracks []CueSheetTrack
 }
