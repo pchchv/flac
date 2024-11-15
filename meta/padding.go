@@ -24,3 +24,11 @@ func (zr zeros) Read(p []byte) (int, error) {
 	}
 	return n, err
 }
+
+// verifyPadding verifies the body of a Padding metadata block.
+// It should only contain zero-padding.
+func (block *Block) verifyPadding() error {
+	zr := zeros{r: block.lr}
+	_, err := io.Copy(io.Discard, zr)
+	return err
+}
