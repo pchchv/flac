@@ -1,5 +1,7 @@
 package meta
 
+import "strings"
+
 // CueSheetTrackIndex specifies a position within a track.
 type CueSheetTrackIndex struct {
 	// Index point offset in samples, relative to the track offset.
@@ -44,4 +46,14 @@ type CueSheet struct {
 	// One or more tracks.
 	// The last track of a cue sheet is always the lead-out track.
 	Tracks []CueSheetTrack
+}
+
+// stringFromSZ returns a copy of the given string terminated at
+// the first occurrence of a NULL character.
+func stringFromSZ(szStr string) string {
+	pos := strings.IndexByte(szStr, '\x00')
+	if pos == -1 {
+		return szStr
+	}
+	return string(szStr[:pos])
 }
