@@ -165,6 +165,21 @@ func (block *Block) parseHeader(r io.Reader) error {
 	return nil
 }
 
+// Parse reads and parses the header and body of a metadata block.
+// Use New for additional granularity.
+func Parse(r io.Reader) (block *Block, err error) {
+	block, err = New(r)
+	if err != nil {
+		return block, err
+	}
+
+	if err = block.Parse(); err != nil {
+		return block, err
+	}
+
+	return block, nil
+}
+
 // unexpected returns io.ErrUnexpectedEOF if err is io.EOF,
 // and returns error otherwise.
 func unexpected(err error) error {
