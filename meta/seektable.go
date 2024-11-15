@@ -13,3 +13,8 @@ type SeekPoint struct {
 	// Number of samples in the target frame.
 	NSamples uint16
 }
+
+// SeekTable contains one or more pre-calculated audio frame seek points.
+type SeekTable struct {
+	Points []SeekPoint // one or more seek points
+}
