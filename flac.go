@@ -71,6 +71,15 @@ func New(r io.Reader) (stream *Stream, err error) {
 	return stream, nil
 }
 
+// Close closes the stream gracefully if the underlying io.Reader also implements the io.Closer interface.
+func (stream *Stream) Close() error {
+	if closer, ok := stream.r.(io.Closer); ok {
+		return closer.Close()
+	}
+
+	return nil
+}
+
 // skipID3v2 skips ID3v2 data prepended to flac files.
 func (stream *Stream) skipID3v2() error {
 	r := bufio.NewReader(stream.r)
