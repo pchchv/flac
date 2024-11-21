@@ -17,7 +17,12 @@
 // A FLAC stream contains one or more audio frames.
 package frame
 
-import "io"
+import (
+	"io"
+
+	"github.com/pchchv/flac/internal/bits"
+	"github.com/pchchv/flac/internal/hashutil"
+)
 
 // Channel assignments.
 // Used abbreviations:
@@ -99,6 +104,24 @@ type Header struct {
 	// the first sample number in the frame can be derived
 	// by multiplying the frame number with the block size (in samples).
 	Num uint64
+}
+
+// Frame contains the header and subframes of an audio frame.
+// It holds the encoded samples from a block (a part) of the audio stream.
+// Each subframe holding the samples from one of its channel.
+type Frame struct {
+	// Audio frame header.
+	Header
+	// One subframe per channel, containing encoded audio samples.
+	Subframes []*Subframe
+	// CRC-16 hash sum, calculated by read operations on hr.
+	crc hashutil.Hash16
+	// A bit reader, wrapping read operations to hr.
+	br *bits.Reader
+	// A CRC-16 hash reader, wrapping read operations to r.
+	hr io.Reader
+	// Underlying io.Reader.
+	r io.Reader
 }
 
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
