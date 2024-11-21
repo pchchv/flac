@@ -7,8 +7,9 @@ import (
 	"github.com/pchchv/flac/internal/bits"
 )
 
-// Prediction methods.
 const (
+	// Prediction methods:
+
 	// PredConstant specifies that the subframe contains a constant sound.
 	// The audio samples are encoded using run-length encoding.
 	// Since every audio sample has the same constant value,
@@ -38,6 +39,13 @@ const (
 	// The remainder of the subframe stores encoded residuals (signal errors)
 	// which specify the difference between the predicted and the original audio samples.
 	PredFIR
+
+	// Residual coding methods:
+
+	// Rice coding with a 4-bit Rice parameter (rice1).
+	ResidualCodingMethodRice1 ResidualCodingMethod = 0
+	// Rice coding with a 5-bit Rice parameter (rice2).
+	ResidualCodingMethodRice2 ResidualCodingMethod = 1
 )
 
 // FixedCoeffs maps from prediction order to
@@ -403,6 +411,61 @@ func (subframe *Subframe) decodeFixed(br *bits.Reader, bps uint) error {
 	// Correct signal errors using the decoded residuals.
 	const shift = 0
 	return subframe.decodeLPC(FixedCoeffs[subframe.Order], shift)
+}
+
+// decodeFIR decodes the linear prediction coded samples of the subframe,
+// using polynomial coefficients stored in the stream.
+func (subframe *Subframe) decodeFIR(br *bits.Reader, bps uint) error {
+	// parse unencoded warm-up samples
+	for i := 0; i < subframe.Order; i++ {
+		// (bits-per-sample) bits: Unencoded warm-up sample
+		x, err := br.Read(bps)
+		if err != nil {
+			return unexpected(err)
+		}
+		sample := signExtend(x, bps)
+		subframe.Samples = append(subframe.Samples, sample)
+	}
+
+	// 4 bits: (coefficients' precision in bits) - 1
+	x, err := br.Read(4)
+	if err != nil {
+		return unexpected(err)
+	} else if x == 0xF {
+		return errors.New("frame.Subframe.decodeFIR: invalid coefficient precision bit pattern (1111)")
+	}
+
+	prec := uint(x) + 1
+	subframe.CoeffPrec = prec
+
+	// 5 bits: predictor coefficient shift needed in bits.
+	if x, err = br.Read(5); err != nil {
+		return unexpected(err)
+	}
+
+	shift := signExtend(x, 5)
+	subframe.CoeffShift = shift
+
+	// parse coefficients
+	coeffs := make([]int32, subframe.Order)
+	for i := range coeffs {
+		// (prec) bits: Predictor coefficient
+		if x, err = br.Read(prec); err != nil {
+			return unexpected(err)
+		}
+		coeffs[i] = signExtend(x, prec)
+	}
+	subframe.Coeffs = coeffs
+
+	// Decode subframe residuals.
+	if err := subframe.decodeResiduals(br); err != nil {
+		return err
+	}
+
+	// Predict the audio samples of the subframe using
+	// a polynomial with predefined coefficients of a given order.
+	// Correct signal errors using the decoded residuals.
+	return subframe.decodeLPC(coeffs, shift)
 }
 
 // signExtend interprets x as a signed n-bit integer value
