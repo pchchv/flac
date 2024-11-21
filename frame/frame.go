@@ -422,6 +422,92 @@ func (frame *Frame) parseSampleRate(br *bits.Reader, sampleRate uint64) error {
 	return nil
 }
 
+// parseBitsPerSample parses the bits per sample of the header.
+func (frame *Frame) parseBitsPerSample(br *bits.Reader) error {
+	// 3 bits: BitsPerSample
+	x, err := br.Read(3)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	// 3 bits are used to specify the sample size as follows:
+	//    000: unknown sample size; get from StreamInfo.
+	//    001: 8 bits-per-sample.
+	//    010: 12 bits-per-sample.
+	//    011: reserved.
+	//    100: 16 bits-per-sample.
+	//    101: 20 bits-per-sample.
+	//    110: 24 bits-per-sample.
+	//    111: reserved.
+	switch x {
+	case 0x0:
+		// 000: unknown bits-per-sample; get from StreamInfo
+	case 0x1:
+		// 001: 8 bits-per-sample
+		frame.BitsPerSample = 8
+	case 0x2:
+		// 010: 12 bits-per-sample
+		frame.BitsPerSample = 12
+	case 0x4:
+		// 100: 16 bits-per-sample
+		frame.BitsPerSample = 16
+	case 0x5:
+		// 101: 20 bits-per-sample
+		frame.BitsPerSample = 20
+	case 0x6:
+		// 110: 24 bits-per-sample
+		frame.BitsPerSample = 24
+	default:
+		// 011: reserved
+		// 111: reserved
+		return fmt.Errorf("frame.Frame.parseHeader: reserved sample size bit pattern (%03b)", x)
+	}
+
+	return nil
+}
+
+// parseBlockSize parses the block size of the header.
+func (frame *Frame) parseBlockSize(br *bits.Reader, blockSize uint64) error {
+	// 4 bits of n are used to specify the block size as follows:
+	//    0000: reserved.
+	//    0001: 192 samples.
+	//    0010-0101: 576 * 2^(n-2) samples.
+	//    0110: get 8 bit (block size)-1 from the end of the header.
+	//    0111: get 16 bit (block size)-1 from the end of the header.
+	//    1000-1111: 256 * 2^(n-8) samples.
+	n := blockSize
+	switch {
+	case n == 0x0:
+		// 0000: reserved
+		return errors.New("frame.Frame.parseHeader: reserved block size bit pattern (0000)")
+	case n == 0x1:
+		// 0001: 192 samples
+		frame.BlockSize = 192
+	case n >= 0x2 && n <= 0x5:
+		// 0010-0101: 576 * 2^(n-2) samples
+		frame.BlockSize = 576 * (1 << (n - 2))
+	case n == 0x6:
+		// 0110: get 8 bit (block size)-1 from the end of the header
+		x, err := br.Read(8)
+		if err != nil {
+			return unexpected(err)
+		}
+		frame.BlockSize = uint16(x + 1)
+	case n == 0x7:
+		// 0111: get 16 bit (block size)-1 from the end of the header
+		x, err := br.Read(16)
+		if err != nil {
+			return unexpected(err)
+		}
+		frame.BlockSize = uint16(x + 1)
+	default:
+		//    1000-1111: 256 * 2^(n-8) samples
+		frame.BlockSize = 256 * (1 << (n - 8))
+	}
+
+	return nil
+}
+
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
 // and returns error otherwise.
 func unexpected(err error) error {
