@@ -124,6 +124,100 @@ type Frame struct {
 	r io.Reader
 }
 
+// Correlate reverts any inter-channel decorrelation between the samples of the subframes.
+// An encoder decorrelates audio samples as follows:
+//
+//	mid = (left + right)/2
+//	side = left - right
+func (frame *Frame) Correlate() {
+	switch frame.Channels {
+	case ChannelsLeftSide:
+		// 2 channels: left, side; using inter-channel decorrelation.
+		left := frame.Subframes[0].Samples
+		side := frame.Subframes[1].Samples
+		for i := range side {
+			// right = left - side
+			side[i] = left[i] - side[i]
+		}
+	case ChannelsSideRight:
+		// 2 channels: side, right; using inter-channel decorrelation.
+		side := frame.Subframes[0].Samples
+		right := frame.Subframes[1].Samples
+		for i := range side {
+			// left = right + side
+			side[i] = right[i] + side[i]
+		}
+	case ChannelsMidSide:
+		// 2 channels: mid, side; using inter-channel decorrelation.
+		mid := frame.Subframes[0].Samples
+		side := frame.Subframes[1].Samples
+		for i := range side {
+			// left = (2*mid + side)/2
+			// right = (2*mid - side)/2
+			m := mid[i]
+			s := side[i]
+			m *= 2
+			// Notice that the integer division in mid = (left + right)/2 discards
+			// the least significant bit. It can be reconstructed however, since a
+			// sum A+B and a difference A-B has the same least significant bit.
+			//
+			// ref: Data Compression: The Complete Reference (ch. 7, Decorrelation)
+			m |= s & 1
+			mid[i] = (m + s) / 2
+			side[i] = (m - s) / 2
+		}
+	}
+}
+
+// Decorrelate performs inter-channel decorrelation between the samples of the subframes.
+// An encoder decorrelates audio samples as follows:
+//
+//	mid = (left + right)/2
+//	side = left - right
+func (frame *Frame) Decorrelate() {
+	switch frame.Channels {
+	case ChannelsLeftSide:
+		// 2 channels: left, side; using inter-channel decorrelation
+		left := frame.Subframes[0].Samples  // already left; no change after inter-channel decorrelation
+		right := frame.Subframes[1].Samples // set to side after inter-channel decorrelation
+		for i := range left {
+			l := left[i]
+			r := right[i]
+			// inter-channel decorrelation:
+			//	side = left - right
+			side := l - r
+			right[i] = side
+		}
+	case ChannelsSideRight:
+		// 2 channels: side, right; using inter-channel decorrelation
+		left := frame.Subframes[0].Samples  // set to side after inter-channel decorrelation
+		right := frame.Subframes[1].Samples // already right; no change after inter-channel decorrelation
+		for i := range left {
+			l := left[i]
+			r := right[i]
+			// inter-channel decorrelation:
+			//	side = left - right
+			side := l - r
+			left[i] = side
+		}
+	case ChannelsMidSide:
+		// 2 channels: mid, side; using inter-channel decorrelation
+		left := frame.Subframes[0].Samples  // set to mid after inter-channel decorrelation
+		right := frame.Subframes[1].Samples // set to side after inter-channel decorrelation
+		for i := range left {
+			// inter-channel decorrelation:
+			//	mid = (left + right)/2
+			//	side = left - right
+			l := left[i]
+			r := right[i]
+			mid := int32((int64(l) + int64(r)) >> 1) // NOTE: using `(left + right) >> 1`, not the same as `(left + right) / 2`
+			side := l - r
+			left[i] = mid
+			right[i] = side
+		}
+	}
+}
+
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
 // and returns error otherwise.
 func unexpected(err error) error {
