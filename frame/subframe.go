@@ -211,6 +211,105 @@ func (subframe *Subframe) decodeVerbatim(br *bits.Reader, bps uint) error {
 	return nil
 }
 
+// decodeRiceResidual decodes and returns
+// a Rice encoded residual (error signal).
+func (subframe *Subframe) decodeRiceResidual(br *bits.Reader, k uint) (int32, error) {
+	// Read unary encoded most significant bits.
+	high, err := br.ReadUnary()
+	if err != nil {
+		return 0, unexpected(err)
+	}
+
+	// Read binary encoded least significant bits.
+	low, err := br.Read(k)
+	if err != nil {
+		return 0, unexpected(err)
+	}
+	folded := uint32(high<<k | low)
+
+	// ZigZag decode.
+	residual := bits.DecodeZigZag(folded)
+	return residual, nil
+}
+
+// decodeRicePart decodes a Rice partition of encoded residuals from the subframe,
+// using a Rice parameter of the specified size in bits.
+func (subframe *Subframe) decodeRicePart(br *bits.Reader, paramSize uint) error {
+	// 4 bits: Partition order.
+	x, err := br.Read(4)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	partOrder := int(x)
+	riceSubframe := &RiceSubframe{
+		PartOrder: partOrder,
+	}
+	subframe.RiceSubframe = riceSubframe
+
+	// parse Rice partitions; in total 2^partOrder partitions.
+	nparts := 1 << partOrder
+	partitions := make([]RicePartition, nparts)
+	riceSubframe.Partitions = partitions
+	for i := 0; i < nparts; i++ {
+		partition := &partitions[i]
+		// (4 or 5) bits: Rice parameter.
+		x, err = br.Read(paramSize)
+		if err != nil {
+			return unexpected(err)
+		}
+
+		param := uint(x)
+		partition.Param = param
+
+		// determine the number of Rice encoded samples in the partition.
+		var nsamples int
+		if partOrder == 0 {
+			nsamples = subframe.NSamples - subframe.Order
+		} else if i != 0 {
+			nsamples = subframe.NSamples / nparts
+		} else {
+			nsamples = subframe.NSamples/nparts - subframe.Order
+		}
+
+		if paramSize == 4 && param == 0xF || paramSize == 5 && param == 0x1F {
+			// 1111 or 11111: Escape code, meaning the partition is in unencoded
+			// binary form using n bits per sample; n follows as a 5-bit number.
+			x, err := br.Read(5)
+			if err != nil {
+				return unexpected(err)
+			}
+
+			n := uint(x)
+			partition.EscapedBitsPerSample = n
+			for j := 0; j < nsamples; j++ {
+				sample, err := br.Read(n)
+				if err != nil {
+					return unexpected(err)
+				}
+				// from section 9.2.7.1.  Escaped partition:
+				//
+				// The residual samples themselves are stored signed two's complement.
+				// i. e., when a partition is escaped and each residual sample is stored with 3 bits,
+				// the number -1 is represented as 0b111.
+				subframe.Samples = append(subframe.Samples, int32(bits.IntN(sample, n)))
+			}
+			continue
+		}
+
+		// decode the Rice encoded residuals of the partition.
+		for j := 0; j < nsamples; j++ {
+			residual, err := subframe.decodeRiceResidual(br, param)
+			if err != nil {
+				return err
+			}
+			subframe.Samples = append(subframe.Samples, residual)
+		}
+	}
+
+	return nil
+}
+
 // signExtend interprets x as a signed n-bit integer value
 // and sign extends it to 32 bits.
 func signExtend(x uint64, n uint) int32 {
