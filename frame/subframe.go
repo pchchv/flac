@@ -1,5 +1,45 @@
 package frame
 
+import (
+	"errors"
+	"fmt"
+
+	"github.com/pchchv/flac/internal/bits"
+)
+
+// Prediction methods.
+const (
+	// PredConstant specifies that the subframe contains a constant sound.
+	// The audio samples are encoded using run-length encoding.
+	// Since every audio sample has the same constant value,
+	// a single unencoded audio sample is stored in practice.
+	// It is replicated a number of times,
+	// as specified by BlockSize in the frame header.
+	PredConstant Pred = iota
+	// PredVerbatim specifies that the subframe contains unencoded audio samples.
+	// Random sound is often stored verbatim,
+	// since no prediction method can compress it sufficiently.
+	PredVerbatim
+	// PredFixed specifies that the subframe contains linear prediction coded audio samples.
+	// The coefficients of the prediction polynomial are selected from a fixed set,
+	// and can represent 0th through fourth-order polynomials.
+	// The prediction order (0 through 4)
+	// is stored within the subframe along with the same number of unencoded warm-up samples,
+	// which are used to kick start the prediction polynomial.
+	// The remainder of the subframe stores encoded residuals (signal errors)
+	// which specify the difference between the predicted and the original audio samples.
+	PredFixed
+	// PredFIR specifies that the subframe contains linear prediction coded audio samples.
+	// The coefficients of the prediction polynomial are stored in the subframe,
+	// and can represent 0th through 32nd-order polynomials.
+	// The prediction order (0 through 32)
+	// is stored within the subframe along with the same number of unencoded warm-up samples,
+	// which are used to kick start the prediction polynomial.
+	// The remainder of the subframe stores encoded residuals (signal errors)
+	// which specify the difference between the predicted and the original audio samples.
+	PredFIR
+)
+
 // Pred specifies the prediction method used to encode
 // the audio samples of a subframe.
 type Pred uint8
@@ -59,4 +99,78 @@ type Subframe struct {
 	Samples []int32
 	// Number of audio samples in the subframe.
 	NSamples int
+}
+
+// parseHeader reads and parses the header of a subframe.
+func (subframe *Subframe) parseHeader(br *bits.Reader) error {
+	// 1 bit: zero-padding.
+	x, err := br.Read(1)
+	if err != nil {
+		return unexpected(err)
+	} else if x != 0 {
+		return errors.New("frame.Subframe.parseHeader: non-zero padding")
+	}
+
+	// 6 bits: Pred.
+	if x, err = br.Read(6); err != nil {
+		return unexpected(err)
+	}
+
+	// The 6 bits are used to specify the prediction method and order as follows:
+	//    000000: Constant prediction method.
+	//    000001: Verbatim prediction method.
+	//    00001x: reserved.
+	//    0001xx: reserved.
+	//    001xxx:
+	//       if (xxx <= 4)
+	//          Fixed prediction method; xxx=order
+	//       else
+	//          reserved.
+	//    01xxxx: reserved.
+	//    1xxxxx: FIR prediction method; xxxxx=order-1
+	switch {
+	case x < 1:
+		// 000000: Constant prediction method.
+		subframe.Pred = PredConstant
+	case x < 2:
+		// 000001: Verbatim prediction method.
+		subframe.Pred = PredVerbatim
+	case x < 8:
+		// 00001x: reserved.
+		// 0001xx: reserved.
+		return fmt.Errorf("frame.Subframe.parseHeader: reserved prediction method bit pattern (%06b)", x)
+	case x < 16:
+		// 001xxx:
+		//    if (xxx <= 4)
+		//       Fixed prediction method; xxx=order
+		//    else
+		//       reserved.
+		order := int(x & 0x07)
+		if order > 4 {
+			return fmt.Errorf("frame.Subframe.parseHeader: reserved prediction method bit pattern (%06b)", x)
+		}
+		subframe.Pred = PredFixed
+		subframe.Order = order
+	case x < 32:
+		// 01xxxx: reserved.
+		return fmt.Errorf("frame.Subframe.parseHeader: reserved prediction method bit pattern (%06b)", x)
+	default:
+		// 1xxxxx: FIR prediction method; xxxxx=order-1
+		subframe.Pred = PredFIR
+		subframe.Order = int(x&0x1F) + 1
+	}
+
+	// 1 bit: hasWastedBits.
+	if x, err = br.Read(1); err != nil {
+		return unexpected(err)
+	} else if x != 0 {
+		// k wasted bits-per-sample in source subblock, k-1 follows, unary coded;
+		// e.g. k=3 => 001 follows, k=7 => 0000001 follows.
+		if x, err = br.ReadUnary(); err != nil {
+			return unexpected(err)
+		}
+		subframe.Wasted = uint(x) + 1
+	}
+
+	return nil
 }
