@@ -33,3 +33,11 @@ func (d *digest) Sum(in []byte) []byte {
 // Table is a 256-word table representing
 // the polynomial for efficient processing.
 type Table [256]uint8
+
+// Update returns the result of adding the bytes in p to the crc.
+func Update(crc uint8, table *Table, p []byte) uint8 {
+	for _, v := range p {
+		crc = table[crc^v]
+	}
+	return crc
+}
