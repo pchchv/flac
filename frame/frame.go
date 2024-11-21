@@ -19,6 +19,7 @@ package frame
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -303,6 +304,122 @@ func (frame *Frame) SampleNumber() uint64 {
 		return frame.Num * uint64(frame.BlockSize)
 	}
 	return frame.Num
+}
+
+// parseChannels parses the channels of the header.
+func (frame *Frame) parseChannels(br *bits.Reader) error {
+	// 4 bits: Channels.
+	//
+	// The 4 bits are used to specify the channels as follows:
+	//    0000: (1 channel) mono.
+	//    0001: (2 channels) left, right.
+	//    0010: (3 channels) left, right, center.
+	//    0011: (4 channels) left, right, left surround, right surround.
+	//    0100: (5 channels) left, right, center, left surround, right surround.
+	//    0101: (6 channels) left, right, center, LFE, left surround, right surround.
+	//    0110: (7 channels) left, right, center, LFE, center surround, side left, side right.
+	//    0111: (8 channels) left, right, center, LFE, left surround, right surround, side left, side right.
+	//    1000: (2 channels) left, side; using inter-channel decorrelation.
+	//    1001: (2 channels) side, right; using inter-channel decorrelation.
+	//    1010: (2 channels) mid, side; using inter-channel decorrelation.
+	//    1011: reserved.
+	//    1100: reserved.
+	//    1101: reserved.
+	//    1111: reserved.
+	x, err := br.Read(4)
+	if err != nil {
+		return unexpected(err)
+	} else if x >= 0xB {
+		return fmt.Errorf("frame.Frame.parseHeader: reserved channels bit pattern (%04b)", x)
+	}
+
+	frame.Channels = Channels(x)
+	return nil
+}
+
+// parseSampleRate parses the sample rate of the header.
+func (frame *Frame) parseSampleRate(br *bits.Reader, sampleRate uint64) error {
+	// The 4 bits are used to specify the sample rate as follows:
+	//    0000: unknown sample rate; get from StreamInfo.
+	//    0001: 88.2 kHz.
+	//    0010: 176.4 kHz.
+	//    0011: 192 kHz.
+	//    0100: 8 kHz.
+	//    0101: 16 kHz.
+	//    0110: 22.05 kHz.
+	//    0111: 24 kHz.
+	//    1000: 32 kHz.
+	//    1001: 44.1 kHz.
+	//    1010: 48 kHz.
+	//    1011: 96 kHz.
+	//    1100: get 8 bit sample rate (in kHz) from the end of the header.
+	//    1101: get 16 bit sample rate (in Hz) from the end of the header.
+	//    1110: get 16 bit sample rate (in daHz) from the end of the header.
+	//    1111: invalid.
+	switch sampleRate {
+	case 0x0:
+		// 0000: unknown sample rate; get from StreamInfo
+	case 0x1:
+		// 0001: 88.2 kHz
+		frame.SampleRate = 88200
+	case 0x2:
+		// 0010: 176.4 kHz
+		frame.SampleRate = 176400
+		log.Printf("frame.Frame.parseHeader: The flac library test cases do not yet include any audio files with sample rate %d. If possible please consider contributing this audio sample to improve the reliability of the test cases.", frame.SampleRate)
+	case 0x3:
+		// 0011: 192 kHz
+		frame.SampleRate = 192000
+	case 0x4:
+		// 0100: 8 kHz
+		frame.SampleRate = 8000
+	case 0x5:
+		// 0101: 16 kHz
+		frame.SampleRate = 16000
+	case 0x6:
+		// 0110: 22.05 kHz
+		frame.SampleRate = 22050
+	case 0x7:
+		// 0111: 24 kHz
+		frame.SampleRate = 24000
+		log.Printf("frame.Frame.parseHeader: The flac library test cases do not yet include any audio files with sample rate %d. If possible please consider contributing this audio sample to improve the reliability of the test cases.", frame.SampleRate)
+	case 0x8:
+		// 1000: 32 kHz
+		frame.SampleRate = 32000
+	case 0x9:
+		// 1001: 44.1 kHz
+		frame.SampleRate = 44100
+	case 0xA:
+		// 1010: 48 kHz
+		frame.SampleRate = 48000
+	case 0xB:
+		// 1011: 96 kHz
+		frame.SampleRate = 96000
+	case 0xC:
+		// 1100: get 8 bit sample rate (in kHz) from the end of the header
+		x, err := br.Read(8)
+		if err != nil {
+			return unexpected(err)
+		}
+		frame.SampleRate = uint32(x * 1000)
+	case 0xD:
+		// 1101: get 16 bit sample rate (in Hz) from the end of the header
+		x, err := br.Read(16)
+		if err != nil {
+			return unexpected(err)
+		}
+		frame.SampleRate = uint32(x)
+	case 0xE:
+		// 1110: get 16 bit sample rate (in daHz) from the end of the header
+		x, err := br.Read(16)
+		if err != nil {
+			return unexpected(err)
+		}
+		frame.SampleRate = uint32(x * 10)
+	default:
+		// 1111: invalid
+		return errors.New("frame.Frame.parseHeader: invalid sample rate bit pattern (1111)")
+	}
+	return nil
 }
 
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
