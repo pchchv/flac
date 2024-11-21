@@ -16,6 +16,9 @@
 // while frames and sub-frames contain encoded audio samples.
 // A FLAC stream contains one or more audio frames.
 package frame
+
+import "io"
+
 // Channel assignments.
 // Used abbreviations:
 //
@@ -96,4 +99,13 @@ type Header struct {
 	// the first sample number in the frame can be derived
 	// by multiplying the frame number with the block size (in samples).
 	Num uint64
+}
+
+// unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
+// and returns error otherwise.
+func unexpected(err error) error {
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
