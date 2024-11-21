@@ -297,6 +297,14 @@ func (frame *Frame) Hash(md5sum hash.Hash) {
 	}
 }
 
+// SampleNumber returns the first sample number contained within the frame.
+func (frame *Frame) SampleNumber() uint64 {
+	if frame.HasFixedBlockSize {
+		return frame.Num * uint64(frame.BlockSize)
+	}
+	return frame.Num
+}
+
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
 // and returns error otherwise.
 func unexpected(err error) error {
