@@ -18,7 +18,11 @@
 package frame
 
 import (
+	"encoding/binary"
+	"fmt"
+	"hash"
 	"io"
+	"log"
 
 	"github.com/pchchv/flac/internal/bits"
 	"github.com/pchchv/flac/internal/hashutil"
@@ -214,6 +218,81 @@ func (frame *Frame) Decorrelate() {
 			side := l - r
 			left[i] = mid
 			right[i] = side
+		}
+	}
+}
+
+// Parse reads and parses the audio samples from each subframe of the frame.
+// If the samples are inter-channel decorrelated between the subframes,
+// it correlates them.
+func (frame *Frame) Parse() error {
+	var err error
+	frame.Subframes = make([]*Subframe, frame.Channels.Count())
+	for channel := range frame.Subframes {
+		// side channel requires an extra bit per sample when
+		// using inter-channel decorrelation.
+		bps := uint(frame.BitsPerSample)
+		switch frame.Channels {
+		case ChannelsSideRight:
+			// channel 0 is the side channel
+			if channel == 0 {
+				bps++
+			}
+		case ChannelsLeftSide, ChannelsMidSide:
+			// channel 1 is the side channel
+			if channel == 1 {
+				bps++
+			}
+		}
+
+		if frame.Subframes[channel], err = frame.parseSubframe(frame.br, bps); err != nil {
+			return err
+		}
+	}
+
+	// inter-channel correlation of subframe samples
+	frame.Correlate()
+
+	// 2 bytes: CRC-16 checksum
+	var want uint16
+	if err = binary.Read(frame.r, binary.BigEndian, &want); err != nil {
+		return unexpected(err)
+	}
+
+	if got := frame.crc.Sum16(); got != want {
+		return fmt.Errorf("frame.Frame.Parse: CRC-16 checksum mismatch; expected 0x%04X, got 0x%04X", want, got)
+	}
+
+	return nil
+}
+
+// Hash adds the decoded audio samples of the frame to a running MD5 hash.
+// It can be used in conjunction with StreamInfo.MD5sum
+// to verify the integrity of the decoded audio samples.
+// Note: The audio samples of the frame must be decoded before calling Hash.
+func (frame *Frame) Hash(md5sum hash.Hash) {
+	var buf [3]byte
+	// write decoded samples to a running MD5 hash
+	bps := frame.BitsPerSample
+	for i := 0; i < int(frame.BlockSize); i++ {
+		for _, subframe := range frame.Subframes {
+			sample := subframe.Samples[i]
+			switch {
+			case 1 <= bps && bps <= 8:
+				buf[0] = uint8(sample)
+				md5sum.Write(buf[:1])
+			case 9 <= bps && bps <= 16:
+				buf[0] = uint8(sample)
+				buf[1] = uint8(sample >> 8)
+				md5sum.Write(buf[:2])
+			case 17 <= bps && bps <= 24:
+				buf[0] = uint8(sample)
+				buf[1] = uint8(sample >> 8)
+				buf[2] = uint8(sample >> 16)
+				md5sum.Write(buf[:])
+			default:
+				log.Printf("frame.Frame.Hash: support for %d-bit sample size not yet implemented", bps)
+			}
 		}
 	}
 }
