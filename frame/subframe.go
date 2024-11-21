@@ -40,6 +40,21 @@ const (
 	PredFIR
 )
 
+// FixedCoeffs maps from prediction order to
+// the LPC coefficients used in fixed encoding.
+//
+//	x_0[n] = 0
+//	x_1[n] = x[n-1]
+//	x_2[n] = 2*x[n-1] - x[n-2]
+//	x_3[n] = 3*x[n-1] - 3*x[n-2] + x[n-3]
+//	x_4[n] = 4*x[n-1] - 6*x[n-2] + 4*x[n-3] - x[n-4]
+var FixedCoeffs = [...][]int32{
+	1: {1},
+	2: {2, -1},
+	3: {3, -3, 1},
+	4: {4, -6, 4, -1},
+}
+
 // Pred specifies the prediction method used to encode
 // the audio samples of a subframe.
 type Pred uint8
@@ -362,6 +377,32 @@ func (subframe *Subframe) decodeLPC(coeffs []int32, shift int32) error {
 	}
 
 	return nil
+}
+
+// decodeFixed decodes the linear prediction coded samples of the subframe,
+// using a fixed set of predefined polynomial coefficients.
+func (subframe *Subframe) decodeFixed(br *bits.Reader, bps uint) error {
+	// parse unencoded warm-up samples
+	for i := 0; i < subframe.Order; i++ {
+		// (bits-per-sample) bits: Unencoded warm-up sample
+		x, err := br.Read(bps)
+		if err != nil {
+			return unexpected(err)
+		}
+		sample := signExtend(x, bps)
+		subframe.Samples = append(subframe.Samples, sample)
+	}
+
+	// decode subframe residuals
+	if err := subframe.decodeResiduals(br); err != nil {
+		return err
+	}
+
+	// Predict the audio samples of the subframe using
+	// a polynomial with predefined coefficients of a given order.
+	// Correct signal errors using the decoded residuals.
+	const shift = 0
+	return subframe.decodeLPC(FixedCoeffs[subframe.Order], shift)
 }
 
 // signExtend interprets x as a signed n-bit integer value
