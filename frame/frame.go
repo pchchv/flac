@@ -70,3 +70,30 @@ type Channels uint8
 func (channels Channels) Count() int {
 	return nChannels[channels]
 }
+
+// Header contains the basic properties of an audio frame,
+// such as its sample rate and channel count.
+// To facilitate random access decoding each frame header starts with a sync-code.
+// This allows the decoder to synchronize and locate the start of a frame header.
+type Header struct {
+	// Specifies if the block size is fixed or variable.
+	HasFixedBlockSize bool
+	// Block size in inter-channel samples,
+	// i.e. the number of audio samples in each subframe.
+	BlockSize uint16
+	// Sample rate in Hz; a 0 value implies unknown,
+	// get sample rate from StreamInfo.
+	SampleRate uint32
+	// Specifies the number of channels (subframes) that exist in the frame,
+	// their order and possible inter-channel decorrelation.
+	Channels Channels
+	// Sample size in bits-per-sample;
+	// a 0 value implies unknown, get sample size from StreamInfo.
+	BitsPerSample uint8
+	// Specifies the frame number if the block size is fixed,
+	// and the first sample number in the frame otherwise.
+	// When using fixed block size,
+	// the first sample number in the frame can be derived
+	// by multiplying the frame number with the block size (in samples).
+	Num uint64
+}
