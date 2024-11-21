@@ -4,6 +4,9 @@ package frame
 // the audio samples of a subframe.
 type Pred uint8
 
+// ResidualCodingMethod specifies a residual coding method.
+type ResidualCodingMethod uint8
+
 // RicePartition is a partition containing
 // a subset of the residuals of a subframe.
 type RicePartition struct {
