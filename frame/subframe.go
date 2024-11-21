@@ -45,3 +45,18 @@ type SubHeader struct {
 	// Rice-coding subframe fields used by residual coding methods rice1 and rice2; nil if unused.
 	RiceSubframe *RiceSubframe
 }
+
+// Subframe contains the encoded audio samples from
+// one channel of an audio block
+// (a part of the audio stream).
+type Subframe struct {
+	// Subframe header.
+	SubHeader
+	// Unencoded audio samples.
+	// Samples is initially nil, and gets populated by a call to Frame.Parse.
+	// Samples is used by decodeFixed and decodeFIR to temporarily store residuals.
+	// Before returning they call decodeLPC which decodes the audio samples.
+	Samples []int32
+	// Number of audio samples in the subframe.
+	NSamples int
+}
