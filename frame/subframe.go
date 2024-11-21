@@ -310,6 +310,60 @@ func (subframe *Subframe) decodeRicePart(br *bits.Reader, paramSize uint) error 
 	return nil
 }
 
+// decodeResiduals decodes the encoded residuals
+// (prediction method error signals) of the subframe.
+func (subframe *Subframe) decodeResiduals(br *bits.Reader) error {
+	// 2 bits: Residual coding method.
+	x, err := br.Read(2)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	residualCodingMethod := ResidualCodingMethod(x)
+	subframe.ResidualCodingMethod = residualCodingMethod
+	// The 2 bits are used to specify the residual coding method as follows:
+	//    00: Rice coding with a 4-bit Rice parameter.
+	//    01: Rice coding with a 5-bit Rice parameter.
+	//    10: reserved.
+	//    11: reserved.
+	switch residualCodingMethod {
+	case 0x0:
+		return subframe.decodeRicePart(br, 4)
+	case 0x1:
+		return subframe.decodeRicePart(br, 5)
+	default:
+		return fmt.Errorf("frame.Subframe.decodeResiduals: reserved residual coding method bit pattern (%02b)", uint8(residualCodingMethod))
+	}
+}
+
+// decodeLPC decodes linear prediction coded audio samples,
+// using the coefficients of a given polynomial,
+// a couple of unencoded warm-up samples,
+// and the signal errors of the prediction as specified by the residuals.
+func (subframe *Subframe) decodeLPC(coeffs []int32, shift int32) error {
+	if len(coeffs) != subframe.Order {
+		return fmt.Errorf("frame.Subframe.decodeLPC: prediction order (%d) differs from number of coefficients (%d)", subframe.Order, len(coeffs))
+	}
+
+	if shift < 0 {
+		return fmt.Errorf("frame.Subframe.decodeLPC: invalid negative shift")
+	}
+
+	if subframe.NSamples != len(subframe.Samples) {
+		return fmt.Errorf("frame.Subframe.decodeLPC: subframe sample count mismatch; expected %d, got %d", subframe.NSamples, len(subframe.Samples))
+	}
+
+	for i := subframe.Order; i < subframe.NSamples; i++ {
+		var sample int64
+		for j, c := range coeffs {
+			sample += int64(c) * int64(subframe.Samples[i-j-1])
+		}
+		subframe.Samples[i] += int32(sample >> uint(shift))
+	}
+
+	return nil
+}
+
 // signExtend interprets x as a signed n-bit integer value
 // and sign extends it to 32 bits.
 func signExtend(x uint64, n uint) int32 {
