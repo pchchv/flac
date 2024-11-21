@@ -30,6 +30,11 @@ func (d *digest) Sum(in []byte) []byte {
 	return append(in, d.crc)
 }
 
+func (d *digest) Write(p []byte) (n int, err error) {
+	d.crc = Update(d.crc, d.table, p)
+	return len(p), nil
+}
+
 // Table is a 256-word table representing
 // the polynomial for efficient processing.
 type Table [256]uint8
