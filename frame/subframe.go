@@ -175,6 +175,42 @@ func (subframe *Subframe) parseHeader(br *bits.Reader) error {
 	return nil
 }
 
+// decodeConstant reads an unencoded audio sample of the subframe.
+// Each sample of the subframe has this constant value.
+// The constant encoding can be thought of as run-length encoding.
+func (subframe *Subframe) decodeConstant(br *bits.Reader, bps uint) error {
+	// (bits-per-sample) bits: Unencoded constant value of the subblock.
+	x, err := br.Read(bps)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	// Each sample of the subframe has the same constant value.
+	sample := signExtend(x, bps)
+	for i := 0; i < subframe.NSamples; i++ {
+		subframe.Samples = append(subframe.Samples, sample)
+	}
+
+	return nil
+}
+
+// decodeVerbatim reads the unencoded audio samples of the subframe.
+func (subframe *Subframe) decodeVerbatim(br *bits.Reader, bps uint) error {
+	// Parse the unencoded audio samples of the subframe.
+	for i := 0; i < subframe.NSamples; i++ {
+		// (bits-per-sample) bits: Unencoded constant value of the subblock.
+		x, err := br.Read(bps)
+		if err != nil {
+			return unexpected(err)
+		}
+
+		sample := signExtend(x, bps)
+		subframe.Samples = append(subframe.Samples, sample)
+	}
+
+	return nil
+}
+
 // signExtend interprets x as a signed n-bit integer value
 // and sign extends it to 32 bits.
 func signExtend(x uint64, n uint) int32 {
