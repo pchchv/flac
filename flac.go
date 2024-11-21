@@ -4,6 +4,7 @@ package flac
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +13,9 @@ import (
 )
 
 var (
-	flacSignature = []byte("fLaC") // marks the beginning of a FLAC stream
-	id3Signature  = []byte("ID3")  // marks the beginning of an ID3 stream, used to skip over ID3 data
-
+	flacSignature  = []byte("fLaC")                                            // marks the beginning of a FLAC stream
+	id3Signature   = []byte("ID3")                                             // marks the beginning of an ID3 stream, used to skip over ID3 data
+	ErrNoSeektable = errors.New("stream.searchFromStart: no seektable exists") // seektable has not been created (search in the thread is impossible)
 )
 
 // Stream contains the metadata blocks and
@@ -141,6 +142,29 @@ func (stream *Stream) parseStreamInfo() (block *meta.Block, err error) {
 
 	stream.Info = si
 	return block, nil
+}
+
+// searchFromStart searches for the given sample number from
+// the start of the seek table and returns
+// the last seek point containing the sample number.
+// If no seek point contains the sample number,
+// the last seek point preceding the sample number is returned.
+// If the sample number is lower than the first seek point,
+// the first seek point is returned.
+func (stream *Stream) searchFromStart(sampleNum uint64) (meta.SeekPoint, error) {
+	if len(stream.seekTable.Points) == 0 {
+		return meta.SeekPoint{}, ErrNoSeektable
+	}
+
+	prev := stream.seekTable.Points[0]
+	for _, p := range stream.seekTable.Points {
+		if p.SampleNum+uint64(p.NSamples) >= sampleNum {
+			return prev, nil
+		}
+		prev = p
+	}
+
+	return prev, nil
 }
 
 // Parse creates a new Stream for accessing the metadata blocks and audio samples of r.
