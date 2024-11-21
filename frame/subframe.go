@@ -198,6 +198,39 @@ func (subframe *Subframe) parseHeader(br *bits.Reader) error {
 	return nil
 }
 
+// parseSubframe reads and parses the header,
+// and the audio samples of a subframe.
+func (frame *Frame) parseSubframe(br *bits.Reader, bps uint) (subframe *Subframe, err error) {
+	// parse subframe header
+	subframe = new(Subframe)
+	if err = subframe.parseHeader(br); err != nil {
+		return subframe, err
+	}
+
+	// adjust bps of subframe for wasted bits-per-sample
+	bps -= subframe.Wasted
+	// decode subframe audio samples
+	subframe.NSamples = int(frame.BlockSize)
+	subframe.Samples = make([]int32, 0, subframe.NSamples)
+	switch subframe.Pred {
+	case PredConstant:
+		err = subframe.decodeConstant(br, bps)
+	case PredVerbatim:
+		err = subframe.decodeVerbatim(br, bps)
+	case PredFixed:
+		err = subframe.decodeFixed(br, bps)
+	case PredFIR:
+		err = subframe.decodeFIR(br, bps)
+	}
+
+	// left shift to account for wasted bits-per-sample
+	for i, sample := range subframe.Samples {
+		subframe.Samples[i] = sample << subframe.Wasted
+	}
+
+	return subframe, err
+}
+
 // decodeConstant reads an unencoded audio sample of the subframe.
 // Each sample of the subframe has this constant value.
 // The constant encoding can be thought of as run-length encoding.
