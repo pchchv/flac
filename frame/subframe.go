@@ -174,3 +174,15 @@ func (subframe *Subframe) parseHeader(br *bits.Reader) error {
 
 	return nil
 }
+
+// signExtend interprets x as a signed n-bit integer value
+// and sign extends it to 32 bits.
+func signExtend(x uint64, n uint) int32 {
+	// x is signed if its most significant bit is set.
+	if x&(1<<(n-1)) != 0 {
+		// sign extend x
+		return int32(x | ^uint64(0)<<n)
+	}
+
+	return int32(x)
+}
