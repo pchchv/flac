@@ -34,3 +34,11 @@ func (d *digest) BlockSize() int {
 func (d *digest) Reset() {
 	d.crc = 0
 }
+
+// Update returns the result of adding the bytes in p to the crc.
+func Update(crc uint16, table *Table, p []byte) uint16 {
+	for _, v := range p {
+		crc = crc<<8 ^ table[crc>>8^uint16(v)]
+	}
+	return crc
+}
