@@ -52,6 +52,12 @@ func New(table *Table) hashutil.Hash8 {
 	return &digest{0, table}
 }
 
+// NewATM creates a new hashutil.Hash8 computing the
+// CRC-8 checksum using the ATM polynomial.
+func NewATM() hashutil.Hash8 {
+	return New(ATMTable)
+}
+
 // Update returns the result of adding the bytes in p to the crc.
 func Update(crc uint8, table *Table, p []byte) uint8 {
 	for _, v := range p {
