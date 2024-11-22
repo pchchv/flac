@@ -54,3 +54,20 @@ func Update(crc uint8, table *Table, p []byte) uint8 {
 	}
 	return crc
 }
+
+// makeTable returns the Table constructed from the specified polynomial.
+func makeTable(poly uint8) (table *Table) {
+	table = new(Table)
+	for i := range table {
+		crc := uint8(i)
+		for j := 0; j < 8; j++ {
+			if crc&0x80 != 0 {
+				crc = crc<<1 ^ poly
+			} else {
+				crc <<= 1
+			}
+		}
+		table[i] = crc
+	}
+	return table
+}
