@@ -9,3 +9,13 @@ type digest struct {
 	crc   uint16
 	table *Table
 }
+
+// Sum16 returns the 16-bit checksum of the hash.
+func (d *digest) Sum16() uint16 {
+	return d.crc
+}
+
+func (d *digest) Sum(in []byte) []byte {
+	s := d.Sum16()
+	return append(in, byte(s>>8), byte(s))
+}
