@@ -1,5 +1,7 @@
 package crc16
 
+import "github.com/pchchv/flac/internal/hashutil"
+
 const (
 	Size = 2      // size of a CRC-16 checksum in bytes.
 	IBM  = 0x8005 // x^16 + x^15 + x^2 + x^0
@@ -11,6 +13,18 @@ var IBMTable = makeTable(IBM)
 // Table is a 256-word table representing the
 // polynomial for efficient processing.
 type Table [256]uint16
+
+// New creates a new hashutil.Hash16 computing the CRC-16 checksum using the
+// polynomial represented by the Table.
+func New(table *Table) hashutil.Hash16 {
+	return &digest{0, table}
+}
+
+// NewIBM creates a new hashutil.Hash16 computing the CRC-16 checksum using the
+// IBM polynomial.
+func NewIBM() hashutil.Hash16 {
+	return New(IBMTable)
+}
 
 // digest represents the partial evaluation of a checksum.
 type digest struct {
