@@ -1,7 +1,12 @@
 package crc16
 
-// Size of a CRC-16 checksum in bytes.
-const Size = 2
+const (
+	Size = 2      // size of a CRC-16 checksum in bytes.
+	IBM  = 0x8005 // x^16 + x^15 + x^2 + x^0
+)
+
+// IBMTable is the table for the IBM polynomial.
+var IBMTable = makeTable(IBM)
 
 // Table is a 256-word table representing the
 // polynomial for efficient processing.
@@ -46,6 +51,17 @@ func Update(crc uint16, table *Table, p []byte) uint16 {
 		crc = crc<<8 ^ table[crc>>8^uint16(v)]
 	}
 	return crc
+}
+
+// Checksum returns the CRC-16 checksum of data, using the polynomial
+// represented by the Table.
+func Checksum(data []byte, table *Table) uint16 {
+	return Update(0, table, data)
+}
+
+// ChecksumIBM returns the CRC-16 checksum of data using the IBM polynomial.
+func ChecksumIBM(data []byte) uint16 {
+	return Update(0, IBMTable, data)
 }
 
 // makeTable returns the Table constructed from the specified polynomial.
