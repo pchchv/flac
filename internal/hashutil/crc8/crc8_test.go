@@ -65,6 +65,26 @@ func BenchmarkNewATM(b *testing.B) {
 	}
 }
 
+func BenchmarkCrc8_1K(b *testing.B) {
+	benchmarkCrc8(b, 1024)
+}
+
+func BenchmarkCrc8_2K(b *testing.B) {
+	benchmarkCrc8(b, 2*1024)
+}
+
+func BenchmarkCrc8_4K(b *testing.B) {
+	benchmarkCrc8(b, 4*1024)
+}
+
+func BenchmarkCrc8_8K(b *testing.B) {
+	benchmarkCrc8(b, 8*1024)
+}
+
+func BenchmarkCrc8_16K(b *testing.B) {
+	benchmarkCrc8(b, 16*1024)
+}
+
 func benchmarkCrc8(b *testing.B, count int64) {
 	b.SetBytes(count)
 	data := make([]byte, count)
