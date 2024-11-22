@@ -30,3 +30,7 @@ func (d *digest) Size() int {
 func (d *digest) BlockSize() int {
 	return 1
 }
+
+func (d *digest) Reset() {
+	d.crc = 0
+}
