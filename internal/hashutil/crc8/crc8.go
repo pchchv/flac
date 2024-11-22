@@ -2,8 +2,13 @@ package crc8
 
 import "github.com/pchchv/flac/internal/hashutil"
 
-// Size of a CRC-8 checksum in bytes.
-const Size = 1
+const (
+	Size = 1    // size of a CRC-8 checksum in bytes
+	ATM  = 0x07 // x^8 + x^2 + x + 1
+)
+
+// ATMTable is the table for the ATM polynomial.
+var ATMTable = makeTable(ATM)
 
 // digest represents the partial evaluation of a checksum.
 type digest struct {
@@ -53,6 +58,15 @@ func Update(crc uint8, table *Table, p []byte) uint8 {
 		crc = table[crc^v]
 	}
 	return crc
+}
+
+// MakeTable returns the Table constructed from the specified polynomial.
+func MakeTable(poly uint8) (table *Table) {
+	switch poly {
+	case ATM:
+		return ATMTable
+	}
+	return makeTable(poly)
 }
 
 // makeTable returns the Table constructed from the specified polynomial.
