@@ -27,6 +27,8 @@ import (
 
 	"github.com/pchchv/flac/internal/bits"
 	"github.com/pchchv/flac/internal/hashutil"
+	"github.com/pchchv/flac/internal/hashutil/crc8"
+	"github.com/pchchv/flac/internal/utf8"
 )
 
 // Channel assignments.
@@ -59,20 +61,24 @@ const (
 	ChannelsMidSide                        // 2 channels: mid, side; using inter-channel decorrelation.
 )
 
-// nChannels specifies the number of channels used by each channel assignment.
-var nChannels = [...]int{
-	ChannelsMono:           1,
-	ChannelsLR:             2,
-	ChannelsLRC:            3,
-	ChannelsLRLsRs:         4,
-	ChannelsLRCLsRs:        5,
-	ChannelsLRCLfeLsRs:     6,
-	ChannelsLRCLfeCsSlSr:   7,
-	ChannelsLRCLfeLsRsSlSr: 8,
-	ChannelsLeftSide:       2,
-	ChannelsSideRight:      2,
-	ChannelsMidSide:        2,
-}
+var (
+	// nChannels specifies the number of channels used by each channel assignment.
+	nChannels = [...]int{
+		ChannelsMono:           1,
+		ChannelsLR:             2,
+		ChannelsLRC:            3,
+		ChannelsLRLsRs:         4,
+		ChannelsLRCLsRs:        5,
+		ChannelsLRCLfeLsRs:     6,
+		ChannelsLRCLfeCsSlSr:   7,
+		ChannelsLRCLfeLsRsSlSr: 8,
+		ChannelsLeftSide:       2,
+		ChannelsSideRight:      2,
+		ChannelsMidSide:        2,
+	}
+	// Errors returned by Frame.parseHeader.
+	ErrInvalidSync = errors.New("frame.Frame.parseHeader: invalid sync-code")
+)
 
 // Channels specifies the number of channels (subframes) that exist in a frame,
 // their order and possible inter-channel decorrelation.
@@ -503,6 +509,106 @@ func (frame *Frame) parseBlockSize(br *bits.Reader, blockSize uint64) error {
 	default:
 		//    1000-1111: 256 * 2^(n-8) samples
 		frame.BlockSize = 256 * (1 << (n - 8))
+	}
+
+	return nil
+}
+
+// parseHeader reads and parses the header of an audio frame.
+func (frame *Frame) parseHeader() error {
+	// create a new CRC-8 hash reader which adds the
+	// data from all read operations to a running hash.
+	h := crc8.NewATM()
+	hr := io.TeeReader(frame.hr, h)
+
+	// create bit reader
+	br := bits.NewReader(hr)
+	frame.br = br
+
+	// 14 bits: sync-code (11111111111110)
+	x, err := br.Read(14)
+	if err != nil {
+		// this is the only place an audio frame may return io.EOF,
+		// which signals a graceful end of a FLAC stream.
+		return err
+	} else if x != 0x3FFE {
+		return ErrInvalidSync
+	}
+
+	// 1 bit: reserved.
+	x, err = br.Read(1)
+	if err != nil {
+		return unexpected(err)
+	} else if x != 0 {
+		return errors.New("frame.Frame.parseHeader: non-zero reserved value")
+	}
+
+	// 1 bit: HasFixedBlockSize
+	x, err = br.Read(1)
+	if err != nil {
+		return unexpected(err)
+	} else if x == 0 {
+		frame.HasFixedBlockSize = true
+	}
+
+	// 4 bits: BlockSize.
+	// The block size parsing is simplified by
+	// deferring it to the end of the header.
+	blockSize, err := br.Read(4)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	// 4 bits: SampleRate.
+	// The sample rate parsing is simplified by
+	// deferring it to the end of the header.
+	sampleRate, err := br.Read(4)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	// parse channels
+	if err := frame.parseChannels(br); err != nil {
+		return err
+	}
+
+	// parse bits per sample
+	if err := frame.parseBitsPerSample(br); err != nil {
+		return err
+	}
+
+	// 1 bit: reserved
+	x, err = br.Read(1)
+	if err != nil {
+		return unexpected(err)
+	} else if x != 0 {
+		return errors.New("frame.Frame.parseHeader: non-zero reserved value")
+	}
+
+	frame.Num, err = utf8.Decode(hr)
+	if err != nil {
+		return unexpected(err)
+	}
+
+	// parse block size
+	if err := frame.parseBlockSize(br, blockSize); err != nil {
+		return err
+	}
+
+	// parse sample rate
+	if err := frame.parseSampleRate(br, sampleRate); err != nil {
+		return err
+	}
+
+	// 1 byte: CRC-8 checksum
+	var want uint8
+	if err = binary.Read(frame.hr, binary.BigEndian, &want); err != nil {
+		return unexpected(err)
+	}
+
+	got := h.Sum8()
+	if want != got {
+		return fmt.Errorf("frame.Frame.parseHeader: CRC-8 checksum mismatch; expected 0x%02X, got 0x%02X", want, got)
 	}
 
 	return nil
