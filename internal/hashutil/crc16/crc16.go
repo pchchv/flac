@@ -64,6 +64,15 @@ func ChecksumIBM(data []byte) uint16 {
 	return Update(0, IBMTable, data)
 }
 
+// MakeTable returns the Table constructed from the specified polynomial.
+func MakeTable(poly uint16) (table *Table) {
+	switch poly {
+	case IBM:
+		return IBMTable
+	}
+	return makeTable(poly)
+}
+
 // makeTable returns the Table constructed from the specified polynomial.
 func makeTable(poly uint16) (table *Table) {
 	table = new(Table)
