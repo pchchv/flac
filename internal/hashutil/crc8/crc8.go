@@ -75,6 +75,17 @@ func MakeTable(poly uint8) (table *Table) {
 	return makeTable(poly)
 }
 
+// Checksum returns the CRC-8 checksum of data,
+// using the polynomial represented by the Table.
+func Checksum(data []byte, table *Table) uint8 {
+	return Update(0, table, data)
+}
+
+// ChecksumATM returns the CRC-8 checksum of data using the ATM polynomial.
+func ChecksumATM(data []byte) uint8 {
+	return Update(0, ATMTable, data)
+}
+
 // makeTable returns the Table constructed from the specified polynomial.
 func makeTable(poly uint8) (table *Table) {
 	table = new(Table)
