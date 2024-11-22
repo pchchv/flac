@@ -58,3 +58,9 @@ func TestCrc8ATM(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkNewATM(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewATM()
+	}
+}
