@@ -1,5 +1,10 @@
 package crc8
 
+import (
+	"io"
+	"testing"
+)
+
 var golden = []test{
 	{0x00, ""},
 	{0x20, "a"},
@@ -38,4 +43,18 @@ var golden = []test{
 type test struct {
 	want uint8
 	in   string
+}
+
+func TestCrc8ATM(t *testing.T) {
+	for _, g := range golden {
+		h := NewATM()
+		if _, err := io.WriteString(h, g.in); err != nil {
+			t.Error(err)
+			continue
+		}
+
+		if got := h.Sum8(); got != g.want {
+			t.Errorf("ATM(%q); expected 0x%02X, got 0x%02X.", g.in, g.want, got)
+		}
+	}
 }
