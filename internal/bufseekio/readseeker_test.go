@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+type readAndError struct {
+	bytes []byte
+}
+
 func TestNewReadSeeker(t *testing.T) {
 	buf := bytes.NewReader(make([]byte, 100))
 	if rs := NewReadSeeker(buf); len(rs.buf) != defaultBufSize {
