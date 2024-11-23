@@ -1,6 +1,9 @@
 package crc16
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
 
 var golden = []test{
 	{0x0000, ""},
@@ -40,6 +43,20 @@ var golden = []test{
 type test struct {
 	want uint16
 	in   string
+}
+
+func TestCrc16IBM(t *testing.T) {
+	for _, g := range golden {
+		h := NewIBM()
+		if _, err := io.WriteString(h, g.in); err != nil {
+			t.Error(err)
+			continue
+		}
+
+		if got := h.Sum16(); got != g.want {
+			t.Errorf("IBM(%q); expected 0x%04X, got 0x%04X.", g.in, g.want, got)
+		}
+	}
 }
 
 func BenchmarkNewIBM(b *testing.B) {
