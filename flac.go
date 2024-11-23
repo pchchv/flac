@@ -10,8 +10,11 @@ import (
 	"os"
 
 	"github.com/pchchv/flac/frame"
+	"github.com/pchchv/flac/internal/bufseekio"
 	"github.com/pchchv/flac/meta"
 )
+
+const defaultSeekTableSize = 100
 
 var (
 	flacSignature  = []byte("fLaC")                                                 // marks the beginning of a FLAC stream
@@ -72,6 +75,40 @@ func New(r io.Reader) (stream *Stream, err error) {
 	}
 
 	return stream, nil
+}
+
+// NewSeek returns a Stream that has seeking enabled.
+// The incoming io.ReadSeeker will not be buffered,
+// which might result in performance issues.
+// Using an in-memory buffer like *bytes.Reader should work well.
+func NewSeek(rs io.ReadSeeker) (stream *Stream, err error) {
+	br := bufseekio.NewReadSeeker(rs)
+	stream = &Stream{r: br, seekTableSize: defaultSeekTableSize}
+	// verify FLAC signature and parse the StreamInfo metadata block
+	block, err := stream.parseStreamInfo()
+	if err != nil {
+		return stream, err
+	}
+
+	for !block.IsLast {
+		block, err = meta.Parse(stream.r)
+		if err != nil {
+			if err != meta.ErrReservedType {
+				return stream, err
+			}
+			if err = block.Skip(); err != nil {
+				return stream, err
+			}
+		}
+
+		if block.Header.Type == meta.TypeSeekTable {
+			stream.seekTable = block.Body.(*meta.SeekTable)
+		}
+	}
+
+	// record file offset of the first frame header
+	stream.dataStart, err = br.Seek(0, io.SeekCurrent)
+	return stream, err
 }
 
 // Close closes the stream gracefully if the
