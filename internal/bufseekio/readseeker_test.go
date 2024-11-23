@@ -2,11 +2,25 @@ package bufseekio
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
+var expectedErr = errors.New("expected error")
+
 type readAndError struct {
 	bytes []byte
+}
+
+func (r *readAndError) Read(p []byte) (n int, err error) {
+	for i, b := range r.bytes {
+		p[i] = b
+	}
+	return len(r.bytes), expectedErr
+}
+
+func (r *readAndError) Seek(offset int64, whence int) (int64, error) {
+	panic("not implemented")
 }
 
 func TestNewReadSeeker(t *testing.T) {
