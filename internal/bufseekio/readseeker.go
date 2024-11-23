@@ -92,3 +92,8 @@ func (b *ReadSeeker) reset(buf []byte, r io.ReadSeeker) {
 		rd:  r,
 	}
 }
+
+func (b *ReadSeeker) seek(offset int64, whence int) (int64, error) {
+	b.r, b.w = 0, 0
+	return b.rd.Seek(offset, whence)
+}
