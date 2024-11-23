@@ -5,6 +5,11 @@ import (
 	"io"
 )
 
+const (
+	defaultBufSize    = 4096
+	minReadBufferSize = 16
+)
+
 var errNegativeRead = errors.New("bufseekio: reader returned negative count from Read")
 
 // ReadSeeker implements buffering for an io.ReadSeeker object.
@@ -17,6 +22,31 @@ type ReadSeeker struct {
 	r   int           // buf read positions within buf
 	w   int           // buf write positions within buf
 	err error
+}
+
+// NewReadSeekerSize returns a
+// new ReadSeeker whose buffer has at least the specified size.
+// If the argument io.ReadSeeker is already a
+// ReadSeeker with large enough size,
+// it returns the underlying ReadSeeker.
+func NewReadSeekerSize(rd io.ReadSeeker, size int) *ReadSeeker {
+	// Is it already a Reader?
+	if b, ok := rd.(*ReadSeeker); ok && len(b.buf) >= size {
+		return b
+	}
+
+	if size < minReadBufferSize {
+		size = minReadBufferSize
+	}
+
+	r := new(ReadSeeker)
+	r.reset(make([]byte, size), rd)
+	return r
+}
+
+// NewReadSeeker returns a new ReadSeeker whose buffer has the default size.
+func NewReadSeeker(rd io.ReadSeeker) *ReadSeeker {
+	return NewReadSeekerSize(rd, defaultBufSize)
 }
 
 // Read reads data into p.
