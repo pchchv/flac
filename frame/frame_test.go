@@ -93,6 +93,46 @@ var golden = []struct {
 	{path: "../testdata/flac-test-files/subset/64 - rice partitions with escape code zero.flac"},
 }
 
+func TestFrameHash(t *testing.T) {
+	var zeroHash [md5.Size]byte
+	for _, g := range golden {
+		t.Run(g.path, func(t *testing.T) {
+			stream, err := flac.Open(g.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+
+			// skip frame hash test if no MD5 hash was set in StreamInfo
+			want := stream.Info.MD5sum[:]
+			if bytes.Equal(want, zeroHash[:]) {
+				t.Skipf("path=%q, skipping frame hash test as no MD5 hash was set in StreamInfo", g.path)
+				return
+			}
+
+			md5sum := md5.New()
+			for frameNum := 0; ; frameNum++ {
+				frame, err := stream.ParseNext()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					t.Errorf("path=%q, frameNum=%d: error while parsing frame; %v", g.path, frameNum, err)
+					continue
+				}
+				frame.Hash(md5sum)
+			}
+
+			got := md5sum.Sum(nil)
+			// Verify the decoded audio samples by comparing the
+			// MD5 checksum that is stored in StreamInfo with the computed one.
+			if !bytes.Equal(got, want) {
+				t.Errorf("path=%q: MD5 checksum mismatch for decoded audio samples; expected %32x, got %32x", g.path, want, got)
+			}
+		})
+	}
+}
+
 func BenchmarkFrameHash(b *testing.B) {
 	// File 151185.flac is a 119.5 MB public domain FLAC file used for testing the flac library.
 	// Due to its size, it is not included in the repository,
