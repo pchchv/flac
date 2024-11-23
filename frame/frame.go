@@ -27,6 +27,7 @@ import (
 
 	"github.com/pchchv/flac/internal/bits"
 	"github.com/pchchv/flac/internal/hashutil"
+	"github.com/pchchv/flac/internal/hashutil/crc16"
 	"github.com/pchchv/flac/internal/hashutil/crc8"
 	"github.com/pchchv/flac/internal/utf8"
 )
@@ -133,6 +134,23 @@ type Frame struct {
 	hr io.Reader
 	// Underlying io.Reader.
 	r io.Reader
+}
+
+// New creates a new Frame for accessing the audio samples of r.
+// It reads and parses an audio frame header.
+// It returns io.EOF to signal a graceful end of FLAC stream.
+//
+// Call Frame.Parse to parse the audio samples of its subframes.
+func New(r io.Reader) (frame *Frame, err error) {
+	// create a new CRC-16 hash reader which adds the
+	// data from all read operations to a running hash
+	crc := crc16.NewIBM()
+	hr := io.TeeReader(r, crc)
+
+	// parse frame header
+	frame = &Frame{crc: crc, hr: hr, r: r}
+	err = frame.parseHeader()
+	return frame, err
 }
 
 // Correlate reverts any inter-channel decorrelation between the samples of the subframes.
