@@ -3,10 +3,17 @@ package bufseekio
 import (
 	"bytes"
 	"errors"
+	"io"
+	"reflect"
 	"testing"
 )
 
 var expectedErr = errors.New("expected error")
+
+type seekRecord struct {
+	offset int64
+	whence int
+}
 
 type readAndError struct {
 	bytes []byte
