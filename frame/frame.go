@@ -632,6 +632,21 @@ func (frame *Frame) parseHeader() error {
 	return nil
 }
 
+// Parse reads and parses the header,
+// and the audio samples from each subframe of a frame.
+// If the samples are inter-channel decorrelated between the subframes,
+// it correlates them.
+// It returns io.EOF to signal a graceful end of FLAC stream.
+func Parse(r io.Reader) (frame *Frame, err error) {
+	// parse frame header
+	frame, err = New(r)
+	if err != nil {
+		return frame, err
+	}
+
+	return frame, frame.Parse()
+}
+
 // unexpected returns io.ErrUnexpectedEOF if error is io.EOF,
 // and returns error otherwise.
 func unexpected(err error) error {
