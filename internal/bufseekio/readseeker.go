@@ -13,3 +13,15 @@ type ReadSeeker struct {
 	w   int           // buf write positions within buf
 	err error
 }
+
+// buffered returns the number of bytes that can
+// be read from the current buffer.
+func (b *ReadSeeker) buffered() int {
+	return b.w - b.r
+}
+
+func (b *ReadSeeker) readErr() error {
+	err := b.err
+	b.err = nil
+	return err
+}
