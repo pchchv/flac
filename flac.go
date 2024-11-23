@@ -98,6 +98,51 @@ func (stream *Stream) ParseNext() (f *frame.Frame, err error) {
 	return frame.Parse(stream.r)
 }
 
+// Seek seeks to the frame containing the given absolute sample number.
+// The return value specifies the
+// first sample number of the frame containing sampleNum.
+func (stream *Stream) Seek(sampleNum uint64) (uint64, error) {
+	if stream.seekTable == nil && stream.seekTableSize > 0 {
+		if err := stream.makeSeekTable(); err != nil {
+			return 0, err
+		}
+	}
+
+	rs := stream.r.(io.ReadSeeker)
+	isBiggerThanStream := stream.Info.NSamples != 0 && sampleNum >= stream.Info.NSamples
+	if isBiggerThanStream || sampleNum < 0 {
+		return 0, fmt.Errorf("unable to seek to sample number %d", sampleNum)
+	}
+
+	point, err := stream.searchFromStart(sampleNum)
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := rs.Seek(stream.dataStart+int64(point.Offset), io.SeekStart); err != nil {
+		return 0, err
+	}
+
+	for {
+		// record seek offset to start of frame
+		offset, err := rs.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return 0, err
+		}
+
+		frame, err := stream.ParseNext()
+		if err != nil {
+			return 0, err
+		}
+
+		if frame.SampleNumber()+uint64(frame.BlockSize) > sampleNum {
+			// restore seek offset to the start of the frame containing the specified sample number
+			_, err := rs.Seek(offset, io.SeekStart)
+			return frame.SampleNumber(), err
+		}
+	}
+}
+
 // skipID3v2 skips ID3v2 data prepended to flac files.
 func (stream *Stream) skipID3v2() error {
 	r := bufio.NewReader(stream.r)
