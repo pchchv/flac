@@ -14,9 +14,10 @@ import (
 )
 
 var (
-	flacSignature  = []byte("fLaC")                                            // marks the beginning of a FLAC stream
-	id3Signature   = []byte("ID3")                                             // marks the beginning of an ID3 stream, used to skip over ID3 data
-	ErrNoSeektable = errors.New("stream.searchFromStart: no seektable exists") // seektable has not been created (search in the thread is impossible)
+	flacSignature  = []byte("fLaC")                                                 // marks the beginning of a FLAC stream
+	id3Signature   = []byte("ID3")                                                  // marks the beginning of an ID3 stream, used to skip over ID3 data
+	ErrNoSeektable = errors.New("stream.searchFromStart: no seektable exists")      // seektable has not been created (search in the thread is impossible)
+	ErrNoSeeker    = errors.New("stream.Seek: reader does not implement io.Seeker") // flac.NewSeek was called using io.Reader, which does not implement io.Seeker
 )
 
 // Stream contains the metadata blocks and
@@ -181,6 +182,56 @@ func (stream *Stream) searchFromStart(sampleNum uint64) (meta.SeekPoint, error) 
 	}
 
 	return prev, nil
+}
+
+// makeSeekTable creates a seek table with seek points to
+// each frame of the FLAC stream.
+func (stream *Stream) makeSeekTable() (err error) {
+	rs, ok := stream.r.(io.ReadSeeker)
+	if !ok {
+		return ErrNoSeeker
+	}
+
+	pos, err := rs.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+
+	_, err = rs.Seek(stream.dataStart, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	var i int
+	var sampleNum uint64
+	var points []meta.SeekPoint
+	for {
+		// record seek offset to start of frame
+		off, err := rs.Seek(0, io.SeekCurrent)
+		if err != nil {
+			return err
+		}
+
+		f, err := stream.ParseNext()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+
+		points = append(points, meta.SeekPoint{
+			SampleNum: sampleNum,
+			Offset:    uint64(off - stream.dataStart),
+			NSamples:  f.BlockSize,
+		})
+		sampleNum += uint64(f.BlockSize)
+		i++
+	}
+
+	stream.seekTable = &meta.SeekTable{Points: points}
+	_, err = rs.Seek(pos, io.SeekStart)
+	return err
 }
 
 // Parse creates a new Stream for accessing the metadata blocks and audio samples of r.
