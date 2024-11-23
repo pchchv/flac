@@ -69,6 +69,35 @@ func (b *ReadSeeker) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+func (b *ReadSeeker) Seek(offset int64, whence int) (int64, error) {
+	// stream.Seek() implementation makes heavy use of seeking with offset 0
+	// to obtain the current position;
+	// let's optimize for it
+	if offset == 0 && whence == io.SeekCurrent {
+		return b.position(), nil
+	}
+	// when seeking from the end,
+	// the absolute position isn't known by ReadSeeker so the current buffer cannot be used.
+	// Seeking cannot be avoided.
+	if whence == io.SeekEnd {
+		return b.seek(offset, whence)
+	}
+
+	// Calculate the absolute offset.
+	abs := offset
+	if whence == io.SeekCurrent {
+		abs += b.position()
+	}
+
+	// Check if the offset is within buf.
+	if abs >= b.pos && abs < b.pos+int64(b.w) {
+		b.r = int(abs - b.pos)
+		return abs, nil
+	}
+
+	return b.seek(abs, io.SeekStart)
+}
+
 // buffered returns the number of bytes that can
 // be read from the current buffer.
 func (b *ReadSeeker) buffered() int {
