@@ -126,3 +126,26 @@ func BenchmarkFrameHash(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkFrameParse(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		stream, err := flac.Open("../testdata/benchmark/151185.flac")
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		for {
+			_, err := stream.ParseNext()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+
+				stream.Close()
+				b.Fatal(err)
+			}
+		}
+
+		stream.Close()
+	}
+}
