@@ -47,3 +47,24 @@ func BenchmarkNewIBM(b *testing.B) {
 		NewIBM()
 	}
 }
+
+func benchmarkCrc16(b *testing.B, count int64) {
+	b.SetBytes(count)
+	data := make([]byte, count)
+	for i := range data {
+		data[i] = byte(i)
+	}
+
+	h := NewIBM()
+	in := make([]byte, 0, h.Size())
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		h.Reset()
+		if _, err := h.Write(data); err != nil {
+			b.Error(err)
+			continue
+		}
+		h.Sum(in)
+	}
+}
