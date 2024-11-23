@@ -65,6 +65,26 @@ func BenchmarkNewIBM(b *testing.B) {
 	}
 }
 
+func BenchmarkCrc16_1K(b *testing.B) {
+	benchmarkCrc16(b, 1024)
+}
+
+func BenchmarkCrc16_2K(b *testing.B) {
+	benchmarkCrc16(b, 2*1024)
+}
+
+func BenchmarkCrc16_4K(b *testing.B) {
+	benchmarkCrc16(b, 4*1024)
+}
+
+func BenchmarkCrc16_8K(b *testing.B) {
+	benchmarkCrc16(b, 8*1024)
+}
+
+func BenchmarkCrc16_16K(b *testing.B) {
+	benchmarkCrc16(b, 16*1024)
+}
+
 func benchmarkCrc16(b *testing.B, count int64) {
 	b.SetBytes(count)
 	data := make([]byte, count)
