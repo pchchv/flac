@@ -1,5 +1,7 @@
 package crc16
 
+import "testing"
+
 var golden = []test{
 	{0x0000, ""},
 	{0x8145, "a"},
@@ -38,4 +40,10 @@ var golden = []test{
 type test struct {
 	want uint16
 	in   string
+}
+
+func BenchmarkNewIBM(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		NewIBM()
+	}
 }
