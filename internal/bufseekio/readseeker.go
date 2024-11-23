@@ -25,3 +25,15 @@ func (b *ReadSeeker) readErr() error {
 	b.err = nil
 	return err
 }
+
+// position returns the absolute read offset.
+func (b *ReadSeeker) position() int64 {
+	return b.pos + int64(b.r)
+}
+
+func (b *ReadSeeker) reset(buf []byte, r io.ReadSeeker) {
+	*b = ReadSeeker{
+		buf: buf,
+		rd:  r,
+	}
+}
