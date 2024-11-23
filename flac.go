@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/pchchv/flac/frame"
 	"github.com/pchchv/flac/meta"
 )
 
@@ -72,13 +73,28 @@ func New(r io.Reader) (stream *Stream, err error) {
 	return stream, nil
 }
 
-// Close closes the stream gracefully if the underlying io.Reader also implements the io.Closer interface.
+// Close closes the stream gracefully if the
+// underlying io.Reader also implements the io.Closer interface.
 func (stream *Stream) Close() error {
 	if closer, ok := stream.r.(io.Closer); ok {
 		return closer.Close()
 	}
 
 	return nil
+}
+
+// Next parses the frame header of the next audio frame.
+// It returns io.EOF to signal a graceful end of FLAC stream.
+//
+// Call Frame.Parse to parse the audio samples of its subframes.
+func (stream *Stream) Next() (f *frame.Frame, err error) {
+	return frame.New(stream.r)
+}
+
+// ParseNext parses the entire next frame including audio samples.
+// Returns io.EOF to signal a graceful end of FLAC stream.
+func (stream *Stream) ParseNext() (f *frame.Frame, err error) {
+	return frame.Parse(stream.r)
 }
 
 // skipID3v2 skips ID3v2 data prepended to flac files.
