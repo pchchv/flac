@@ -1,6 +1,7 @@
 package flac
 
 import (
+	"encoding/binary"
 	"io"
 
 	"github.com/icza/bitio"
@@ -122,6 +123,55 @@ func encodeStreamInfo(bw *bitio.Writer, info *meta.StreamInfo, last bool) error 
 	// 16 bytes: MD5sum
 	if _, err := bw.Write(info.MD5sum[:]); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// encodeApplication encodes the Application metadata block, writing to bw.
+func encodeApplication(bw *bitio.Writer, app *meta.Application, last bool) error {
+	// store metadata block header
+	nbits := int64(32 + 8*len(app.Data))
+	hdr := &meta.Header{
+		IsLast: last,
+		Type:   meta.TypeApplication,
+		Length: nbits / 8,
+	}
+	if err := encodeBlockHeader(bw, hdr); err != nil {
+		return err
+	}
+
+	// store metadata block body
+	// 32 bits: ID
+	if err := bw.WriteBits(uint64(app.ID), 32); err != nil {
+		return err
+	}
+
+	if _, err := bw.Write(app.Data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// encodeSeekTable encodes the SeekTable metadata block, writing to bw.
+func encodeSeekTable(bw *bitio.Writer, table *meta.SeekTable, last bool) error {
+	// store metadata block header
+	nbits := int64((64 + 64 + 16) * len(table.Points))
+	hdr := &meta.Header{
+		IsLast: last,
+		Type:   meta.TypeSeekTable,
+		Length: nbits / 8,
+	}
+	if err := encodeBlockHeader(bw, hdr); err != nil {
+		return err
+	}
+
+	// store metadata block body
+	for _, point := range table.Points {
+		if err := binary.Write(bw, binary.BigEndian, point); err != nil {
+			return err
+		}
 	}
 
 	return nil
