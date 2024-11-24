@@ -346,3 +346,103 @@ func encodeCueSheet(bw *bitio.Writer, cs *meta.CueSheet, last bool) error {
 
 	return nil
 }
+
+// encodePicture encodes the Picture metadata block, writing to bw.
+func encodePicture(bw *bitio.Writer, pic *meta.Picture, last bool) error {
+	// store metadata block header
+	nbits := int64(32 + 32 + 8*len(pic.MIME) + 32 + 8*len(pic.Desc) + 32 + 32 + 32 + 32 + 32 + 8*len(pic.Data))
+	hdr := &meta.Header{
+		IsLast: last,
+		Type:   meta.TypePicture,
+		Length: nbits / 8,
+	}
+	if err := encodeBlockHeader(bw, hdr); err != nil {
+		return err
+	}
+
+	// store metadata block body
+	// 32 bits: Type
+	if err := bw.WriteBits(uint64(pic.Type), 32); err != nil {
+		return err
+	}
+
+	// 32 bits: (MIME type length)
+	if err := bw.WriteBits(uint64(len(pic.MIME)), 32); err != nil {
+		return err
+	}
+
+	// (MIME type length) bytes: MIME
+	if _, err := bw.Write([]byte(pic.MIME)); err != nil {
+		return err
+	}
+
+	// 32 bits: (description length)
+	if err := bw.WriteBits(uint64(len(pic.Desc)), 32); err != nil {
+		return err
+	}
+
+	// (description length) bytes: Desc
+	if _, err := bw.Write([]byte(pic.Desc)); err != nil {
+		return err
+	}
+
+	// 32 bits: Width
+	if err := bw.WriteBits(uint64(pic.Width), 32); err != nil {
+		return err
+	}
+
+	// 32 bits: Height
+	if err := bw.WriteBits(uint64(pic.Height), 32); err != nil {
+		return err
+	}
+
+	// 32 bits: Depth
+	if err := bw.WriteBits(uint64(pic.Depth), 32); err != nil {
+		return err
+	}
+
+	// 32 bits: NPalColors
+	if err := bw.WriteBits(uint64(pic.NPalColors), 32); err != nil {
+		return err
+	}
+
+	// 32 bits: (data length)
+	if err := bw.WriteBits(uint64(len(pic.Data)), 32); err != nil {
+		return err
+	}
+
+	// (data length) bytes: Data
+	if _, err := bw.Write(pic.Data); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// encodeBlock encodes the metadata block, writing to bw.
+func encodeBlock(bw *bitio.Writer, block *meta.Block, last bool) error {
+	if block.Type == meta.TypePadding {
+		return encodePadding(bw, block.Length, last)
+	}
+
+	if block.Length == 0 {
+		return encodeEmptyBlock(bw, block.Type, last)
+	}
+
+	switch body := block.Body.(type) {
+	case *meta.StreamInfo:
+		return encodeStreamInfo(bw, body, last)
+	case *meta.Application:
+		return encodeApplication(bw, body, last)
+	case *meta.SeekTable:
+		return encodeSeekTable(bw, body, last)
+	case *meta.VorbisComment:
+		return encodeVorbisComment(bw, body, last)
+	case *meta.CueSheet:
+		return encodeCueSheet(bw, body, last)
+	case *meta.Picture:
+		return encodePicture(bw, body, last)
+	default:
+		panic(fmt.Errorf("support for metadata block body type %T not yet implemented", body))
+	}
+}
