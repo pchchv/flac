@@ -44,6 +44,18 @@ func (r *seekRecorder) Seek(offset int64, whence int) (int64, error) {
 	return r.rs.Seek(offset, whence)
 }
 
+func (r *seekRecorder) assertSeeked(t *testing.T, expected []seekRecord) {
+	t.Helper()
+	if !reflect.DeepEqual(expected, r.seeks) {
+		t.Fatalf("seek mismatch; expected %#v, got %#v", expected, r.seeks)
+	}
+	r.reset()
+}
+
+func (r *seekRecorder) reset() {
+	r.seeks = nil
+}
+
 func TestNewReadSeeker(t *testing.T) {
 	buf := bytes.NewReader(make([]byte, 100))
 	if rs := NewReadSeeker(buf); len(rs.buf) != defaultBufSize {
