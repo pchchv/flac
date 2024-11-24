@@ -48,3 +48,81 @@ func encodePadding(bw *bitio.Writer, length int64, last bool) error {
 
 	return nil
 }
+
+// encodeEmptyBlock encodes the metadata block header of an
+// empty metadata block with the specified type,
+// writing to bw.
+func encodeEmptyBlock(bw *bitio.Writer, typ meta.Type, last bool) error {
+	// store metadata block header
+	hdr := &meta.Header{
+		IsLast: last,
+		Type:   typ,
+		Length: 0,
+	}
+	if err := encodeBlockHeader(bw, hdr); err != nil {
+		return err
+	}
+	return nil
+}
+
+// encodeStreamInfo encodes the StreamInfo metadata block, writing to bw.
+func encodeStreamInfo(bw *bitio.Writer, info *meta.StreamInfo, last bool) error {
+	// store metadata block header
+	const nbits = 16 + 16 + 24 + 24 + 20 + 3 + 5 + 36 + 8*16
+	hdr := &meta.Header{
+		IsLast: last,
+		Type:   meta.TypeStreamInfo,
+		Length: nbits / 8,
+	}
+	if err := encodeBlockHeader(bw, hdr); err != nil {
+		return err
+	}
+
+	// store metadata block body
+	// 16 bits: BlockSizeMin
+	if err := bw.WriteBits(uint64(info.BlockSizeMin), 16); err != nil {
+		return err
+	}
+
+	// 16 bits: BlockSizeMax
+	if err := bw.WriteBits(uint64(info.BlockSizeMax), 16); err != nil {
+		return err
+	}
+
+	// 24 bits: FrameSizeMin
+	if err := bw.WriteBits(uint64(info.FrameSizeMin), 24); err != nil {
+		return err
+	}
+
+	// 24 bits: FrameSizeMax
+	if err := bw.WriteBits(uint64(info.FrameSizeMax), 24); err != nil {
+		return err
+	}
+
+	// 20 bits: SampleRate
+	if err := bw.WriteBits(uint64(info.SampleRate), 20); err != nil {
+		return err
+	}
+
+	// 3 bits: NChannels; stored as (number of channels) - 1
+	if err := bw.WriteBits(uint64(info.NChannels-1), 3); err != nil {
+		return err
+	}
+
+	// 5 bits: BitsPerSample; stored as (bits-per-sample) - 1
+	if err := bw.WriteBits(uint64(info.BitsPerSample-1), 5); err != nil {
+		return err
+	}
+
+	// 36 bits: NSamples
+	if err := bw.WriteBits(info.NSamples, 36); err != nil {
+		return err
+	}
+
+	// 16 bytes: MD5sum
+	if _, err := bw.Write(info.MD5sum[:]); err != nil {
+		return err
+	}
+
+	return nil
+}
