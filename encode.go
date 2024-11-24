@@ -65,3 +65,47 @@ func NewEncoder(w io.Writer, info *meta.StreamInfo, blocks ...*meta.Block) (*Enc
 	// return encoder to be used for encoding audio samples
 	return enc, nil
 }
+
+// Close closes the underlying io.Writer of the encoder and flushes any pending writes.
+// If the io.Writer implements io.Seeker,
+// the encoder will update the StreamInfo metadata block with the
+// MD5 checksum of the unencoded audio samples,
+// the number of samples,
+// and the minimum and maximum frame size and block size.
+func (enc *Encoder) Close() error {
+	// update StreamInfo metadata block
+	if ws, ok := enc.w.(io.WriteSeeker); ok {
+		if _, err := ws.Seek(int64(len(flacSignature)), io.SeekStart); err != nil {
+			return err
+		}
+		// update minimum and maximum block size (in samples) of FLAC stream
+		enc.Info.BlockSizeMin = enc.blockSizeMin
+		enc.Info.BlockSizeMax = enc.blockSizeMax
+		// update minimum and maximum frame size (in bytes) of FLAC stream
+		enc.Info.FrameSizeMin = enc.frameSizeMin
+		enc.Info.FrameSizeMax = enc.frameSizeMax
+		// update total number of samples (per channel) of FLAC stream
+		enc.Info.NSamples = enc.nsamples
+		// update MD5 checksum of the unencoded audio samples
+		sum := enc.md5sum.Sum(nil)
+		for i := range sum {
+			enc.Info.MD5sum[i] = sum[i]
+		}
+
+		bw := bitio.NewWriter(ws)
+		// write updated StreamInfo metadata block to output stream
+		if err := encodeStreamInfo(bw, enc.Info, len(enc.Blocks) == 0); err != nil {
+			return err
+		}
+
+		if _, err := bw.Align(); err != nil {
+			return err
+		}
+	}
+
+	if closer, ok := enc.w.(io.Closer); ok {
+		return closer.Close()
+	}
+
+	return nil
+}
