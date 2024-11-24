@@ -185,3 +185,107 @@ func TestReadSeeker_Read(t *testing.T) {
 		t.Fatalf("want n read %d got %d, err=%v", 0, n, err)
 	}
 }
+
+func TestReadSeeker_Seek(t *testing.T) {
+	data := make([]byte, 100)
+	for i := range data {
+		data[i] = byte(i)
+	}
+
+	r := &seekRecorder{rs: bytes.NewReader(data)}
+	rs := NewReadSeekerSize(r, 20)
+	if len(rs.buf) != 20 {
+		t.Fatal("the buffer size was changed and the validity of this test has become unknown")
+	}
+
+	got := make([]byte, 5)
+
+	// test with io.SeekStar
+	if p, err := rs.Seek(10, io.SeekStart); err != nil || p != 10 {
+		t.Fatalf("want %d got %d, err=%v", 10, p, err)
+	}
+
+	r.assertSeeked(t, []seekRecord{{10, io.SeekStart}})
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{10, 11, 12, 13, 14}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{10, 11, 12, 13, 14}, got, err)
+	}
+
+	if p, err := rs.Seek(0, io.SeekCurrent); err != nil || p != 15 {
+		t.Fatalf("want %d got %d, err=%v", 15, p, err)
+	}
+
+	r.assertSeeked(t, nil)
+
+	// test with io.SeekCurrent and positive offset within buffer
+	if p, err := rs.Seek(5, io.SeekCurrent); err != nil || p != 20 {
+		t.Fatalf("want %d got %d, err=%v", 20, p, err)
+	}
+
+	r.assertSeeked(t, nil)
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{20, 21, 22, 23, 24}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{20, 21, 22, 23, 24}, got, err)
+	}
+
+	if p, err := rs.Seek(0, io.SeekCurrent); err != nil || p != 25 {
+		t.Fatalf("want %d got %d, err=%v", 25, p, err)
+	}
+
+	// test with io.SeekCurrent and negative offset within buffer
+	if p, err := rs.Seek(-10, io.SeekCurrent); err != nil || p != 15 {
+		t.Fatalf("want %d got %d, err=%v", 15, p, err)
+	}
+
+	r.assertSeeked(t, nil)
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{15, 16, 17, 18, 19}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{15, 16, 17, 18, 19}, got, err)
+	}
+
+	if p, err := rs.Seek(0, io.SeekCurrent); err != nil || p != 20 {
+		t.Fatalf("want %d got %d, err=%v", 20, p, err)
+	}
+
+	// test with io.SeekCurrent and positive offset outside buffer
+	if p, err := rs.Seek(30, io.SeekCurrent); err != nil || p != 50 {
+		t.Fatalf("want %d got %d, err=%v", 50, p, err)
+	}
+
+	r.assertSeeked(t, []seekRecord{{50, io.SeekStart}})
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{50, 51, 52, 53, 54}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{50, 51, 52, 53, 54}, got, err)
+	}
+
+	if p, err := rs.Seek(0, io.SeekCurrent); err != nil || p != 55 {
+		t.Fatalf("want %d got %d, err=%v", 55, p, err)
+	}
+
+	// test seek with io.SeekEnd within buffer
+	if p, err := rs.Seek(-45, io.SeekEnd); err != nil || p != 55 {
+		t.Fatalf("want %d got %d, err=%v", 55, p, err)
+	}
+
+	r.assertSeeked(t, []seekRecord{{-45, io.SeekEnd}})
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{55, 56, 57, 58, 59}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{55, 56, 57, 58, 59}, got, err)
+	}
+
+	if p, err := rs.Seek(0, io.SeekCurrent); err != nil || p != 60 {
+		t.Fatalf("want %d got %d, err=%v", 60, p, err)
+	}
+
+	// test seek with error
+	if _, err := rs.Seek(-100, io.SeekStart); err == nil || err.Error() != "bytes.Reader.Seek: negative position" {
+		t.Fatalf("want error 'bytes.Reader.Seek: negative position' got %v", err)
+	}
+
+	r.assertSeeked(t, []seekRecord{{-100, io.SeekStart}})
+
+	// test seek after error
+	if p, err := rs.Seek(10, io.SeekStart); err != nil || p != 10 {
+		t.Fatalf("want %d got %d, err=%v", 10, p, err)
+	}
+
+	r.assertSeeked(t, []seekRecord{{10, io.SeekStart}})
+	if n, err := rs.Read(got); err != nil || n != 5 || !reflect.DeepEqual(got, []byte{10, 11, 12, 13, 14}) {
+		t.Fatalf("want n read %d got %d, want buffer %v got %v, err=%v", 5, n, []byte{10, 11, 12, 13, 14}, got, err)
+	}
+}
