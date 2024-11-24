@@ -30,6 +30,11 @@ func (r *readAndError) Seek(offset int64, whence int) (int64, error) {
 	panic("not implemented")
 }
 
+type seekRecorder struct {
+	rs    io.ReadSeeker
+	seeks []seekRecord
+}
+
 func TestNewReadSeeker(t *testing.T) {
 	buf := bytes.NewReader(make([]byte, 100))
 	if rs := NewReadSeeker(buf); len(rs.buf) != defaultBufSize {
