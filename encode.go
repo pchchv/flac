@@ -1,8 +1,12 @@
 package flac
 
 import (
+	"crypto/md5"
 	"hash"
 	"io"
+
+	"github.com/icza/bitio"
+	"github.com/pchchv/flac/meta"
 )
 
 // Encoder represents a FLAC encoder.
@@ -22,4 +26,42 @@ type Encoder struct {
 	// Current frame number if block size is fixed,
 	// and the first sample number of the current frame otherwise.
 	curNum uint64
+}
+
+// NewEncoder returns a new FLAC encoder for the
+// given metadata StreamInfo block and optional metadata blocks.
+func NewEncoder(w io.Writer, info *meta.StreamInfo, blocks ...*meta.Block) (*Encoder, error) {
+	// store FLAC signature
+	enc := &Encoder{
+		Stream: &Stream{
+			Info:   info,
+			Blocks: blocks,
+		},
+		w:      w,
+		md5sum: md5.New(),
+	}
+
+	bw := bitio.NewWriter(w)
+	if _, err := bw.Write(flacSignature); err != nil {
+		return nil, err
+	}
+
+	// encode metadata blocks
+	if err := encodeStreamInfo(bw, info, len(blocks) == 0); err != nil {
+		return nil, err
+	}
+
+	for i, block := range blocks {
+		if err := encodeBlock(bw, block, i == len(blocks)-1); err != nil {
+			return nil, err
+		}
+	}
+
+	// flush pending writes of metadata blocks
+	if _, err := bw.Align(); err != nil {
+		return nil, err
+	}
+
+	// return encoder to be used for encoding audio samples
+	return enc, nil
 }
