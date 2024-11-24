@@ -35,6 +35,15 @@ type seekRecorder struct {
 	seeks []seekRecord
 }
 
+func (r *seekRecorder) Read(p []byte) (n int, err error) {
+	return r.rs.Read(p)
+}
+
+func (r *seekRecorder) Seek(offset int64, whence int) (int64, error) {
+	r.seeks = append(r.seeks, seekRecord{offset: offset, whence: whence})
+	return r.rs.Seek(offset, whence)
+}
+
 func TestNewReadSeeker(t *testing.T) {
 	buf := bytes.NewReader(make([]byte, 100))
 	if rs := NewReadSeeker(buf); len(rs.buf) != defaultBufSize {
