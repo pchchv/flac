@@ -8,6 +8,7 @@ import (
 
 	"github.com/icza/bitio"
 	"github.com/pchchv/flac/frame"
+	"github.com/pchchv/flac/internal/hashutil/crc16"
 	"github.com/pchchv/flac/internal/hashutil/crc8"
 	"github.com/pchchv/flac/internal/utf8"
 )
@@ -322,6 +323,97 @@ func (enc *Encoder) encodeFrameHeader(w io.Writer, hdr frame.Header) error {
 	// including the sync code
 	crc := h.Sum8()
 	if err := binary.Write(w, binary.BigEndian, crc); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// WriteFrame encodes the given audio frame to the output stream.
+// The Num field of the frame header is automatically calculated by the encoder.
+func (enc *Encoder) WriteFrame(f *frame.Frame) error {
+	// sanity checks
+	nchannels := int(enc.Info.NChannels)
+	if nchannels != len(f.Subframes) {
+		return fmt.Errorf("subframe and channel count mismatch; expected %d, got %d", nchannels, len(f.Subframes))
+	}
+
+	nsamplesPerChannel := f.Subframes[0].NSamples
+	for i, subframe := range f.Subframes {
+		if nsamplesPerChannel != len(subframe.Samples) {
+			return fmt.Errorf("invalid number of samples in channel %d; expected %d, got %d", i, nsamplesPerChannel, len(subframe.Samples))
+		}
+	}
+
+	if nchannels != f.Channels.Count() {
+		return fmt.Errorf("channel count mismatch; expected %d, got %d", nchannels, f.Channels.Count())
+	}
+
+	// create a new CRC-16 hash writer which adds the data from all write operations to a running hash
+	h := crc16.NewIBM()
+	hw := io.MultiWriter(h, enc.w)
+
+	// encode frame header
+	f.Num = enc.curNum
+	if f.HasFixedBlockSize {
+		enc.curNum++
+	} else {
+		enc.curNum += uint64(nsamplesPerChannel)
+	}
+
+	enc.nsamples += uint64(nsamplesPerChannel)
+	blockSize := uint16(nsamplesPerChannel)
+	if enc.blockSizeMin == 0 || blockSize < enc.blockSizeMin {
+		enc.blockSizeMin = blockSize
+	}
+
+	if enc.blockSizeMax == 0 || blockSize > enc.blockSizeMax {
+		enc.blockSizeMax = blockSize
+	}
+
+	f.Hash(enc.md5sum)
+	if err := enc.encodeFrameHeader(hw, f.Header); err != nil {
+		return err
+	}
+
+	// inter-channel decorrelation of subframe samples
+	f.Decorrelate()
+	defer f.Correlate() // NOTE: revert decorrelation of audio samples after encoding is done (to make encode non-destructive)
+
+	// encode subframes
+	bw := bitio.NewWriter(hw)
+	for channel, subframe := range f.Subframes {
+		// side channel requires an extra bit per sample when using inter-channel decorrelation
+		bps := uint(f.BitsPerSample)
+		switch f.Channels {
+		case frame.ChannelsSideRight:
+			// channel 0 is the side channel
+			if channel == 0 {
+				bps++
+			}
+		case frame.ChannelsLeftSide, frame.ChannelsMidSide:
+			// channel 1 is the side channel
+			if channel == 1 {
+				bps++
+			}
+		}
+
+		if err := encodeSubframe(bw, f.Header, subframe, bps); err != nil {
+			return err
+		}
+	}
+
+	// zero-padding to byte alignment
+	// flush pending writes to subframe
+	if _, err := bw.Align(); err != nil {
+		return err
+	}
+
+	// CRC-16 (polynomial = x^16 + x^15 + x^2 + x^0, initialized with 0)
+	// of everything before the crc,
+	// back to and including the frame header sync code
+	crc := h.Sum16()
+	if err := binary.Write(enc.w, binary.BigEndian, crc); err != nil {
 		return err
 	}
 
