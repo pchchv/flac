@@ -239,6 +239,99 @@ func encodeFixedSamples(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subf
 	return nil
 }
 
+// encodeFIRSamples stores the given samples using linear prediction coding
+// with a custom set of predefined polynomial coefficients, writing to bw.
+func encodeFIRSamples(bw *bitio.Writer, subframe *frame.Subframe, bps uint) error {
+	// encode unencoded warm-up samples
+	samples := subframe.Samples
+	for i := 0; i < subframe.Order; i++ {
+		sample := samples[i]
+		if err := bw.WriteBits(uint64(sample), uint8(bps)); err != nil {
+			return err
+		}
+	}
+
+	// 4 bits: (coefficients' precision in bits) - 1
+	if err := bw.WriteBits(uint64(subframe.CoeffPrec-1), 4); err != nil {
+		return err
+	}
+
+	// 5 bits: predictor coefficient shift needed in bits
+	if err := bw.WriteBits(uint64(subframe.CoeffShift), 5); err != nil {
+		return err
+	}
+
+	// encode coefficients
+	for _, coeff := range subframe.Coeffs {
+		// (prec) bits: Predictor coefficient
+		if err := bw.WriteBits(uint64(coeff), uint8(subframe.CoeffPrec)); err != nil {
+			return err
+		}
+	}
+
+	// compute residuals (signal errors of the prediction)
+	// between audio samples and LPC predicted audio samples.
+	residuals, err := getLPCResiduals(subframe, subframe.Coeffs, subframe.CoeffShift)
+	if err != nil {
+		return err
+	}
+
+	// encode subframe residuals
+	if err := encodeResiduals(bw, subframe, residuals); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// encodeSubframe encodes the given subframe, writing to bw.
+func encodeSubframe(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe, bps uint) error {
+	// encode subframe header
+	if err := encodeSubframeHeader(bw, subframe.SubHeader); err != nil {
+		return err
+	}
+
+	// adjust bps of subframe for wasted bits-per-sample
+	bps -= subframe.Wasted
+
+	// right shift to account for wasted bits-per-sample
+	if subframe.Wasted > 0 {
+		for i, sample := range subframe.Samples {
+			subframe.Samples[i] = sample >> subframe.Wasted
+		}
+		// NOTE: use defer to restore original samples after encode
+		defer func() {
+			for i, sample := range subframe.Samples {
+				subframe.Samples[i] = sample << subframe.Wasted
+			}
+		}()
+	}
+
+	// encode audio samples
+	switch subframe.Pred {
+	case frame.PredConstant:
+		if err := encodeConstantSamples(bw, hdr, subframe, bps); err != nil {
+			return err
+		}
+	case frame.PredVerbatim:
+		if err := encodeVerbatimSamples(bw, hdr, subframe, bps); err != nil {
+			return err
+		}
+	case frame.PredFixed:
+		if err := encodeFixedSamples(bw, hdr, subframe, bps); err != nil {
+			return err
+		}
+	case frame.PredFIR:
+		if err := encodeFIRSamples(bw, subframe, bps); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("support for prediction method %v not yet implemented", subframe.Pred)
+	}
+
+	return nil
+}
+
 // getLPCResiduals returns the residuals
 // (signal errors of the prediction)
 // between the given audio samples and the LPC predicted audio samples,
