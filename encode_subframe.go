@@ -9,7 +9,7 @@ import (
 )
 
 // encodeConstantSamples stores the given constant sample, writing to bw.
-func encodeConstantSamples(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe, bps uint) error {
+func encodeConstantSamples(bw *bitio.Writer, subframe *frame.Subframe, bps uint) error {
 	samples := subframe.Samples
 	sample := samples[0]
 	for _, s := range samples[1:] {
@@ -213,7 +213,7 @@ func encodeResiduals(bw *bitio.Writer, subframe *frame.Subframe, residuals []int
 // given samples using linear prediction coding with a
 // fixed set of predefined polynomial coefficients,
 // writing to bw.
-func encodeFixedSamples(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe, bps uint) error {
+func encodeFixedSamples(bw *bitio.Writer, subframe *frame.Subframe, bps uint) error {
 	// encode unencoded warm-up samples
 	samples := subframe.Samples
 	for i := 0; i < subframe.Order; i++ {
@@ -310,7 +310,7 @@ func encodeSubframe(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe
 	// encode audio samples
 	switch subframe.Pred {
 	case frame.PredConstant:
-		if err := encodeConstantSamples(bw, hdr, subframe, bps); err != nil {
+		if err := encodeConstantSamples(bw, subframe, bps); err != nil {
 			return err
 		}
 	case frame.PredVerbatim:
@@ -318,7 +318,7 @@ func encodeSubframe(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe
 			return err
 		}
 	case frame.PredFixed:
-		if err := encodeFixedSamples(bw, hdr, subframe, bps); err != nil {
+		if err := encodeFixedSamples(bw, subframe, bps); err != nil {
 			return err
 		}
 	case frame.PredFIR:
