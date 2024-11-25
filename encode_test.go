@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pchchv/flac"
+	"github.com/pchchv/flac/meta"
 )
 
 func TestEncode(t *testing.T) {
@@ -144,5 +145,68 @@ func TestEncode(t *testing.T) {
 				t.Fatalf("%q: content mismatch; expected % X, got % X", path, want, got)
 			}
 		})
+	}
+}
+
+func TestEncodeComment(t *testing.T) {
+	// decode FLAC file
+	const path = "meta/testdata/input-VA.flac"
+	src, err := flac.ParseFile(path)
+	if err != nil {
+		t.Fatalf("unable to parse input FLAC file; %v", err)
+	}
+	defer src.Close()
+
+	// add custom vorbis comment
+	const want = "FLAC encoding test case"
+	for _, block := range src.Blocks {
+		if comment, ok := block.Body.(*meta.VorbisComment); ok {
+			comment.Vendor = want
+		}
+	}
+
+	// open encoder for FLAC stream
+	out := new(bytes.Buffer)
+	enc, err := flac.NewEncoder(out, src.Info, src.Blocks...)
+	if err != nil {
+		t.Fatalf("%q: unable to create encoder for FLAC stream; %v", path, err)
+	}
+
+	// encode audio samples
+	for {
+		frame, err := src.ParseNext()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			t.Fatalf("%q: unable to parse audio frame of FLAC stream; %v", path, err)
+		}
+
+		if err := enc.WriteFrame(frame); err != nil {
+			t.Fatalf("%q: unable to encode audio frame of FLAC stream; %v", path, err)
+		}
+	}
+
+	// close encoder and flush pending writes
+	if err := enc.Close(); err != nil {
+		t.Fatalf("%q: unable to close encoder for FLAC stream; %v", path, err)
+	}
+
+	// parse encoded FLAC file
+	stream, err := flac.Parse(out)
+	if err != nil {
+		t.Fatalf("unable to parse output FLAC file; %v", err)
+	}
+	defer stream.Close()
+
+	// add custom vorbis comment
+	for _, block := range stream.Blocks {
+		if comment, ok := block.Body.(*meta.VorbisComment); ok {
+			got := comment.Vendor
+			if got != want {
+				t.Errorf("Vorbis comment mismatch; expected %q, got %q", want, got)
+				continue
+			}
+		}
 	}
 }
