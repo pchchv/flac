@@ -120,6 +120,73 @@ func encodeSubframeHeader(bw *bitio.Writer, subHdr frame.SubHeader) error {
 	return nil
 }
 
+// encodeRicePart encodes a Rice partition of residuals from the subframe,
+// using a Rice parameter of the specified size in bits.
+func encodeRicePart(bw *bitio.Writer, subframe *frame.Subframe, paramSize uint, residuals []int32) error {
+	// 4 bits: Partition order
+	riceSubframe := subframe.RiceSubframe
+	if err := bw.WriteBits(uint64(riceSubframe.PartOrder), 4); err != nil {
+		return err
+	}
+
+	// parse Rice partitions; in total 2^partOrder partitions
+	partOrder := riceSubframe.PartOrder
+	nparts := 1 << partOrder
+	curResidualIndex := 0
+	for i := range riceSubframe.Partitions {
+		partition := &riceSubframe.Partitions[i]
+		// (4 or 5) bits: Rice parameter
+		param := partition.Param
+		if err := bw.WriteBits(uint64(param), uint8(paramSize)); err != nil {
+			return err
+		}
+
+		// determine the number of Rice encoded samples in the partition
+		var nsamples int
+		if partOrder == 0 {
+			nsamples = subframe.NSamples - subframe.Order
+		} else if i != 0 {
+			nsamples = subframe.NSamples / nparts
+		} else {
+			nsamples = subframe.NSamples/nparts - subframe.Order
+		}
+
+		if paramSize == 4 && param == 0xF || paramSize == 5 && param == 0x1F {
+			// 1111 or 11111: Escape code,
+			// meaning the partition is in unencoded binary form using n bits per sample;
+			// n follows as a 5-bit number
+			if err := bw.WriteBits(uint64(partition.EscapedBitsPerSample), 5); err != nil {
+				return err
+			}
+			for j := 0; j < nsamples; j++ {
+				// From section 9.2.7.1.
+				// Escaped partition:
+				// The residual samples themselves are stored signed two's complement.
+				// I. e. when a partition is escaped and each residual sample is stored with 3 bits,
+				// the number -1 is represented as 0b111.
+				residual := residuals[curResidualIndex]
+				curResidualIndex++
+				if err := bw.WriteBits(uint64(residual), uint8(partition.EscapedBitsPerSample)); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		// encode the Rice residuals of the partition
+		for j := 0; j < nsamples; j++ {
+			residual := residuals[curResidualIndex]
+			curResidualIndex++
+			if err := encodeRiceResidual(bw, param, residual); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+
 // getLPCResiduals returns the residuals
 // (signal errors of the prediction)
 // between the given audio samples and the LPC predicted audio samples,
