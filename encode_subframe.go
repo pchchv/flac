@@ -5,6 +5,7 @@ import (
 
 	"github.com/icza/bitio"
 	"github.com/pchchv/flac/frame"
+	"github.com/pchchv/flac/internal/bits"
 )
 
 // encodeConstantSamples stores the given constant sample, writing to bw.
@@ -38,6 +39,80 @@ func encodeVerbatimSamples(bw *bitio.Writer, hdr frame.Header, subframe *frame.S
 
 	for _, sample := range samples {
 		if err := bw.WriteBits(uint64(sample), uint8(bps)); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// encodeRiceResidual encodes a Rice residual (error signal).
+func encodeRiceResidual(bw *bitio.Writer, k uint, residual int32) error {
+	// ZigZag encode
+	folded := bits.EncodeZigZag(residual)
+
+	// unfold into low- and high
+	lowMask := ^uint32(0) >> (32 - k) // lower k bits
+	highMask := ^uint32(0) << k       // upper bits
+	high := (folded & highMask) >> k
+	low := folded & lowMask
+	// write unary encoded most significant bits
+	if err := bits.WriteUnary(bw, uint64(high)); err != nil {
+		return err
+	}
+
+	// write binary encoded least significant bits
+	if err := bw.WriteBits(uint64(low), uint8(k)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// encodeSubframeHeader encodes the given subframe header, writing to bw.
+func encodeSubframeHeader(bw *bitio.Writer, subHdr frame.SubHeader) error {
+	// zero bit padding, to prevent sync-fooling string of 1s
+	if err := bw.WriteBits(0x0, 1); err != nil {
+		return err
+	}
+
+	// subframe type:
+	//     000000 : SUBFRAME_CONSTANT
+	//     000001 : SUBFRAME_VERBATIM
+	//     00001x : reserved
+	//     0001xx : reserved
+	//     001xxx : if(xxx <= 4) SUBFRAME_FIXED, xxx=order ; else reserved
+	//     01xxxx : reserved
+	//     1xxxxx : SUBFRAME_LPC, xxxxx=order-1
+	var ubits uint64
+	switch subHdr.Pred {
+	case frame.PredConstant:
+		// 000000 : SUBFRAME_CONSTANT
+		ubits = 0x00
+	case frame.PredVerbatim:
+		// 000001 : SUBFRAME_VERBATIM
+		ubits = 0x01
+	case frame.PredFixed:
+		// 001xxx : if(xxx <= 4) SUBFRAME_FIXED, xxx=order ; else reserved
+		ubits = 0x08 | uint64(subHdr.Order)
+	case frame.PredFIR:
+		// 1xxxxx : SUBFRAME_LPC, xxxxx=order-1
+		ubits = 0x20 | uint64(subHdr.Order-1)
+	}
+	if err := bw.WriteBits(ubits, 6); err != nil {
+		return err
+	}
+
+	// <1+k> 'Wasted bits-per-sample' flag:
+	//     0 : no wasted bits-per-sample in source subblock, k=0
+	//     1 : k wasted bits-per-sample in source subblock, k-1 follows, unary coded; e.g. k=3 => 001 follows, k=7 => 0000001 follows
+	hasWastedBits := subHdr.Wasted > 0
+	if err := bw.WriteBool(hasWastedBits); err != nil {
+		return err
+	}
+
+	if hasWastedBits {
+		if err := bits.WriteUnary(bw, uint64(subHdr.Wasted-1)); err != nil {
 			return err
 		}
 	}
