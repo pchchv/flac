@@ -186,6 +186,58 @@ func encodeRicePart(bw *bitio.Writer, subframe *frame.Subframe, paramSize uint, 
 	return nil
 }
 
+// encodeResiduals encodes the residuals
+// (prediction method error signals)
+// of the subframe.
+func encodeResiduals(bw *bitio.Writer, subframe *frame.Subframe, residuals []int32) error {
+	// 2 bits: Residual coding method
+	if err := bw.WriteBits(uint64(subframe.ResidualCodingMethod), 2); err != nil {
+		return err
+	}
+	// 2 bits are used to specify the residual coding method as follows:
+	//    00: Rice coding with a 4-bit Rice parameter
+	//    01: Rice coding with a 5-bit Rice parameter
+	//    10: reserved
+	//    11: reserved
+	switch subframe.ResidualCodingMethod {
+	case frame.ResidualCodingMethodRice1:
+		return encodeRicePart(bw, subframe, 4, residuals)
+	case frame.ResidualCodingMethodRice2:
+		return encodeRicePart(bw, subframe, 5, residuals)
+	default:
+		return fmt.Errorf("encodeResiduals: reserved residual coding method bit pattern (%02b)", uint8(subframe.ResidualCodingMethod))
+	}
+}
+
+// encodeFixedSamples stores the
+// given samples using linear prediction coding with a
+// fixed set of predefined polynomial coefficients,
+// writing to bw.
+func encodeFixedSamples(bw *bitio.Writer, hdr frame.Header, subframe *frame.Subframe, bps uint) error {
+	// encode unencoded warm-up samples
+	samples := subframe.Samples
+	for i := 0; i < subframe.Order; i++ {
+		sample := samples[i]
+		if err := bw.WriteBits(uint64(sample), uint8(bps)); err != nil {
+			return err
+		}
+	}
+
+	// compute residuals (signal errors of the prediction)
+	// between audio samples and LPC predicted audio samples
+	const shift = 0
+	residuals, err := getLPCResiduals(subframe, frame.FixedCoeffs[subframe.Order], shift)
+	if err != nil {
+		return err
+	}
+
+	// encode subframe residuals
+	if err := encodeResiduals(bw, subframe, residuals); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // getLPCResiduals returns the residuals
 // (signal errors of the prediction)
